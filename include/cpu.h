@@ -87,11 +87,13 @@ namespace sickboy {
         static std::unordered_map<std::uint8_t, Instruction> instruction_set;
         static std::unordered_map<std::uint8_t, Instruction> prefixed_instruction_set;
 
-        CPU(const std::shared_ptr<MMU>& memory);
-
         Registers registers;
         std::shared_ptr<MMU> memory;
         bool is_prefixed;
+
+        CPU(const std::shared_ptr<MMU>& memory);
+
+        std::uint8_t tick();
 
     };
 

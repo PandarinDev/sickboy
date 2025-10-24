@@ -7,7 +7,6 @@ namespace sickboy {
     }
 
     void MMU::write(std::uint16_t address, std::uint8_t value) {
-        // TODO: Handle I/O ranges
         ram[address] = value;
     }
 

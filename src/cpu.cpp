@@ -1,6 +1,9 @@
 #include "cpu.h"
+#include "utils.h"
 
 #include <stdexcept>
+
+#include <iostream>
 
 namespace sickboy {
 
@@ -50,6 +53,43 @@ namespace sickboy {
     }
 
     CPU::CPU(const std::shared_ptr<MMU>& memory) : registers({}), memory(memory), is_prefixed(false) {}
+
+    std::uint8_t CPU::tick() {
+        auto lookup_instruction = [](std::uint8_t instruction_code) -> const Instruction& {
+            auto instruction_it = CPU::instruction_set.find(instruction_code);
+            if (instruction_it == CPU::instruction_set.cend()) {
+                throw std::runtime_error("Unimplemented CPU instruction '" + StringUtils::to_hex(instruction_code) + "', cannot continue.");
+            }
+            return instruction_it->second;
+        };
+        auto lookup_prefixed_instruction = [](std::uint8_t instruction_code) -> const Instruction& {
+            auto instruction_it = CPU::prefixed_instruction_set.find(instruction_code);
+            if (instruction_it == CPU::prefixed_instruction_set.cend()) {
+                throw std::runtime_error("Unimplemented prefixed CPU instruction '" + StringUtils::to_hex(instruction_code) + "', cannot continue.");
+            }
+            return instruction_it->second;
+        };
+
+        // TODO: We are currently getting into an infinite loop because boot ROM is trying to wait for LCD status register 0xFF44 to be 144 to indicate
+        // that currently a VBlank period is going on. Since a) there is no MMU implementation, b) there is no LCD/GPU implementation this never happens
+        // Fetch instruction
+        auto was_prefixed = is_prefixed;
+        auto instruction_code = memory->read(registers.pc);
+        const auto& instruction = is_prefixed
+            ? lookup_prefixed_instruction(instruction_code)
+            : lookup_instruction(instruction_code);
+        auto additional_cycles = instruction.implementation(*this);
+        // We upcast and then downcast our new PC address to protect against overflow - on narrowing static cast C++
+        // will modulo the PC address which is the exact behavior (wrapping around PC) of the DMG CPU in this case.
+        registers.pc = static_cast<std::uint16_t>(static_cast<std::uint32_t>(registers.pc) + static_cast<std::uint32_t>(instruction.length));
+        // If the cycle started out prefixed reset the prefix
+        if (was_prefixed) {
+            is_prefixed = false;
+        }
+
+        // Return the number of master clock cycles used
+        return instruction.cycles + additional_cycles;
+    }
 
     std::uint8_t r8_get_value(CPU& cpu, std::uint8_t reg_code) {
         switch (reg_code) {
@@ -206,7 +246,8 @@ namespace sickboy {
         }
         else if (load_type == LoadType::A_IMM8) {
             auto offset = cpu.memory->read(cpu.registers.pc + 1);
-            cpu.memory->write(cpu.registers.a(), 0xFF00 + offset);
+            auto value = cpu.memory->read(0xFF00 + offset);
+            cpu.registers.a() = value;
         }
         else throw std::runtime_error("Unimplemented load type in load8_high_impl.");
 
@@ -258,13 +299,7 @@ namespace sickboy {
     std::uint8_t jump_impl(CPU& cpu) {
         auto instruction = cpu.memory->read(cpu.registers.pc);
         auto is_conditional = ((instruction & 0b00100000) >> 5) != 0;
-        if (is_conditional) {
-            auto condition_flag_code = (instruction & 00011000) >> 3;
-            auto flag_value = flag_lookup(cpu, condition_flag_code);
-            // If the flag is not set do nothing
-            if (!flag_value) {
-                return 0;
-            }
+        auto read_offset_and_jump = [&cpu]() {
             // The offset for the jump is a signed relative offset from the address AFTER the current instruction (including its parameter)
             // However, since CPU tick logic will add the length of the current instruction (2) to PC anyways we will exclude that here.
             auto offset = static_cast<std::int8_t>(cpu.memory->read(cpu.registers.pc + 1));
@@ -273,10 +308,22 @@ namespace sickboy {
             // which is exactly the behavior the the DMG CPU does for underflow/overflow.
             cpu.registers.pc = static_cast<std::uint16_t>(static_cast<std::int32_t>(cpu.registers.pc) + static_cast<std::int32_t>(offset));
 
-            // If we jumped this instruction takes 4 cycles longer
-            return 4;
+            // std::cout << "Jumping to " << std::hex << static_cast<int>(cpu.registers.pc + 2) << std::dec << std::endl;
+        };
+        if (is_conditional) {
+            auto condition_flag_code = (instruction & 00011000) >> 3;
+            auto flag_value = flag_lookup(cpu, condition_flag_code);
+            // If the flag is not set do nothing
+            if (!flag_value) {
+                return 0;
+            }
+            read_offset_and_jump();
         }
-        else throw std::runtime_error("Unconditional jumps are not supported yet.");
+        else {
+            read_offset_and_jump();
+        }
+        // If we jumped this instruction takes 4 cycles longer
+        return 4;
     }
 
     std::uint8_t inc8_impl(CPU& cpu) {
@@ -435,6 +482,28 @@ namespace sickboy {
         return 0;
     }
 
+    std::uint8_t sub_impl(CPU& cpu) {
+        enum class SubType : std::uint8_t {
+            R8 = 0b10010,
+            IMM8 = 0b11010
+        };
+        auto instruction = cpu.memory->read(cpu.registers.pc);
+        auto sub_type = static_cast<SubType>((instruction & 0b11111000) >> 3);
+        auto first = cpu.registers.a();
+        auto second = (sub_type == SubType::R8)
+            ? r8_get_value(cpu, instruction & 0b111)
+            : cpu.memory->read(cpu.registers.pc + 1);
+
+        cpu.registers.a() = static_cast<std::uint16_t>(static_cast<int>(first) - static_cast<int>(second));
+
+        cpu.registers.set_flag_z(first == second);
+        cpu.registers.set_flag_n(true);
+        cpu.registers.set_flag_h((first & 0xf) < (second & 0xf));
+        cpu.registers.set_flag_c(first < second);
+
+        return 0;
+    }
+
     std::uint8_t nop_impl(CPU&) {
         return 0;
     }
@@ -448,16 +517,22 @@ namespace sickboy {
         { 0x05, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                   // DEC B
         { 0x06, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },             // LD B, IMM8
         { 0x0C, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                   // INC C
+        { 0x0D, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                   // DEC C
         { 0x0E, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },             // LD E, IMM8
         { 0x11, Instruction { .length = 3, .cycles = 16, .implementation = load16_impl } },                // LD DE, IMM16
         { 0x13, Instruction { .length = 1, .cycles = 8, .implementation = inc16_impl } },                  // INC DE
+        { 0x15, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                   // DEC D
+        { 0x16, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },             // LD D, IMM8
         { 0x17, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_clear_zero_impl } }, // RLA
+        { 0x18, Instruction { .length = 2, .cycles = 12, .implementation = jump_impl } },                  // JR IMM8
         { 0x1A, Instruction { .length = 1, .cycles = 8, .implementation = load16_impl } },                 // LD A, [DE]
+        { 0x1D, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                   // DEC E
         { 0x1E, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },             // LD E, IMM8
         { 0x20, Instruction { .length = 2, .cycles = 8, .implementation = jump_impl } },                   // JR NZ, IMM8 (signed)
         { 0x21, Instruction { .length = 3, .cycles = 16, .implementation = load16_impl } },                // LD HL, IMM16
         { 0x22, Instruction { .length = 1, .cycles = 8, .implementation = load16_impl } },                 // LD [HL+], A
         { 0x23, Instruction { .length = 1, .cycles = 8, .implementation = inc16_impl } },                  // INC HL
+        { 0x24, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                   // INC H
         { 0x28, Instruction { .length = 2, .cycles = 8, .implementation = jump_impl } },                   // JR Z, IMM8
         { 0x31, Instruction { .length = 3, .cycles = 16, .implementation = load16_impl } },                // LD SP, IMM16
         { 0x32, Instruction { .length = 1, .cycles = 16, .implementation = load16_impl } },                // LD SP, IMM16
@@ -468,7 +543,10 @@ namespace sickboy {
         { 0x67, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },               // LD H, A
         { 0x77, Instruction { .length = 1, .cycles = 8, .implementation = load8_imm8_impl } },             // LD [HL], A
         { 0x7B, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },               // LD A, E
+        { 0x7C, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl} },                // LD A, H
+        { 0x90, Instruction { .length = 1, .cycles = 4, .implementation = sub_impl } },                    // SUB A, B
         { 0xAF, Instruction { .length = 1, .cycles = 16, .implementation = xor_impl } },                   // XOR A, R8
+        { 0xBE, Instruction { .length = 1, .cycles = 8, .implementation = compare_impl } },                // CP A, [HL]
         { 0xC1, Instruction { .length = 1, .cycles = 12, .implementation = pop_impl} },                    // POP BC
         { 0xC5, Instruction { .length = 1, .cycles = 16, .implementation = push_impl } },                  // PUSH BC
         { 0xC9, Instruction { .length = 0, .cycles = 16, .implementation = ret_impl } },                   // RET
