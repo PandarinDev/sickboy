@@ -5,6 +5,7 @@
 #include "ppu.h"
 
 #include <memory>
+#include <filesystem>
 
 namespace sickboy {
 
@@ -18,7 +19,7 @@ namespace sickboy {
         PPU ppu;
         double last_frame;
 
-        System();
+        System(const std::filesystem::path& cartridge_path);
 
         void tick();
 

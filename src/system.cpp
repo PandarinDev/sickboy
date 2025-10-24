@@ -1,14 +1,32 @@
 #include "system.h"
 #include "utils.h"
 
+#include <iostream>
+
 namespace sickboy {
 
-    System::System() : memory(std::make_shared<MMU>()), cpu(memory), ppu(memory), last_frame(0.0) {
-        auto rom_contents = FileUtils::read_binary("assets/dmg_boot.bin");
-        if (rom_contents.size() != 256) {
-            throw std::runtime_error("Invalid size of boot ROM.");
+    System::System(const std::filesystem::path& cartridge_path) :
+        memory(std::make_shared<MMU>()), cpu(memory), ppu(memory), last_frame(0.0) {
+        // Load boot ROM contents
+        {
+            auto rom_contents = FileUtils::read_binary("assets/dmg_boot.bin");
+            if (rom_contents.size() != 256) {
+                throw std::runtime_error("Invalid size of boot ROM.");
+            }
+            memory->copy_boot_rom(rom_contents.data());
         }
-        memory->copy(0, rom_contents.data(), rom_contents.size());
+
+        // Load cartridge data
+        {
+            static constexpr auto max_cartridge_size = 0x8000;
+            auto cartridge_contents = FileUtils::read_binary(cartridge_path);
+            auto cartridge_size = cartridge_contents.size();
+            if (cartridge_size > max_cartridge_size) {
+                cartridge_size = max_cartridge_size;
+                std::cerr << "WARNING: Cartridge data is getting truncated because it is too large." << std::endl;
+            }
+            memory->copy(0, cartridge_contents.data(), cartridge_size);
+        }
     }
 
     void System::tick() {

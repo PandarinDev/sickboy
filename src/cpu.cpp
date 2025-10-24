@@ -3,8 +3,6 @@
 
 #include <stdexcept>
 
-#include <iostream>
-
 namespace sickboy {
 
     std::uint8_t& Registers::a() { return *(reinterpret_cast<std::uint8_t*>(&af) + 1); }
@@ -296,7 +294,7 @@ namespace sickboy {
         }
     }
 
-    std::uint8_t jump_impl(CPU& cpu) {
+    std::uint8_t jump_relative_impl(CPU& cpu) {
         auto instruction = cpu.memory->read(cpu.registers.pc);
         auto is_conditional = ((instruction & 0b00100000) >> 5) != 0;
         auto read_offset_and_jump = [&cpu]() {
@@ -307,8 +305,6 @@ namespace sickboy {
             // This is to protect PC against underflows/overflows. The narrowing static cast will modulo the result,
             // which is exactly the behavior the the DMG CPU does for underflow/overflow.
             cpu.registers.pc = static_cast<std::uint16_t>(static_cast<std::int32_t>(cpu.registers.pc) + static_cast<std::int32_t>(offset));
-
-            // std::cout << "Jumping to " << std::hex << static_cast<int>(cpu.registers.pc + 2) << std::dec << std::endl;
         };
         if (is_conditional) {
             auto condition_flag_code = (instruction & 00011000) >> 3;
@@ -324,6 +320,24 @@ namespace sickboy {
         }
         // If we jumped this instruction takes 4 cycles longer
         return 4;
+    }
+
+    std::uint8_t jump_absolute_impl(CPU& cpu) {
+        enum class JumpType : std::uint8_t {
+            CONDITIONAL = 0b10,
+            UNCONDITIONAL = 0b11,
+            HL = 0b01
+        };
+        auto instruction = cpu.memory->read(cpu.registers.pc);
+        auto jump_type = static_cast<JumpType>(instruction & 0b11);
+        if (jump_type == JumpType::UNCONDITIONAL) {
+            std::uint16_t address =
+                (cpu.memory->read(cpu.registers.pc + 2) << 8) |
+                (cpu.memory->read(cpu.registers.pc + 1) << 0);
+            cpu.registers.pc = address;
+            return 4;
+        }
+        else throw std::runtime_error("Unimplemented jump type in jump_absolute_impl.");
     }
 
     std::uint8_t inc8_impl(CPU& cpu) {
@@ -504,6 +518,30 @@ namespace sickboy {
         return 0;
     }
 
+    std::uint8_t add_impl(CPU& cpu) {
+        enum class AddType : std::uint8_t {
+            R8 = 0b10000,
+            IMM8 = 0b11000
+        };
+        auto instruction = cpu.memory->read(cpu.registers.pc);
+        auto add_type = static_cast<AddType>((instruction & 0b11111000) >> 3);
+        auto first = cpu.registers.a();
+        auto second = (add_type == AddType::R8)
+            ? r8_get_value(cpu, instruction & 0b111)
+            : cpu.memory->read(cpu.registers.pc + 1);
+        
+        auto result_16_bit = static_cast<std::uint16_t>(first) + static_cast<std::uint16_t>(second);
+        auto result = static_cast<std::uint8_t>(result_16_bit);
+        cpu.registers.a() = result;
+
+        cpu.registers.set_flag_z(result == 0);
+        cpu.registers.set_flag_n(false);
+        cpu.registers.set_flag_h(((first & 0xF) + (second & 0xF)) > 0xF);
+        cpu.registers.set_flag_c(result_16_bit > 0xFF);
+
+        return 0;
+    }
+
     std::uint8_t nop_impl(CPU&) {
         return 0;
     }
@@ -524,16 +562,16 @@ namespace sickboy {
         { 0x15, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                   // DEC D
         { 0x16, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },             // LD D, IMM8
         { 0x17, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_clear_zero_impl } }, // RLA
-        { 0x18, Instruction { .length = 2, .cycles = 12, .implementation = jump_impl } },                  // JR IMM8
+        { 0x18, Instruction { .length = 2, .cycles = 12, .implementation = jump_relative_impl } },         // JR IMM8
         { 0x1A, Instruction { .length = 1, .cycles = 8, .implementation = load16_impl } },                 // LD A, [DE]
         { 0x1D, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                   // DEC E
         { 0x1E, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },             // LD E, IMM8
-        { 0x20, Instruction { .length = 2, .cycles = 8, .implementation = jump_impl } },                   // JR NZ, IMM8 (signed)
+        { 0x20, Instruction { .length = 2, .cycles = 8, .implementation = jump_relative_impl } },          // JR NZ, IMM8 (signed)
         { 0x21, Instruction { .length = 3, .cycles = 16, .implementation = load16_impl } },                // LD HL, IMM16
         { 0x22, Instruction { .length = 1, .cycles = 8, .implementation = load16_impl } },                 // LD [HL+], A
         { 0x23, Instruction { .length = 1, .cycles = 8, .implementation = inc16_impl } },                  // INC HL
         { 0x24, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                   // INC H
-        { 0x28, Instruction { .length = 2, .cycles = 8, .implementation = jump_impl } },                   // JR Z, IMM8
+        { 0x28, Instruction { .length = 2, .cycles = 8, .implementation = jump_relative_impl } },          // JR Z, IMM8
         { 0x31, Instruction { .length = 3, .cycles = 16, .implementation = load16_impl } },                // LD SP, IMM16
         { 0x32, Instruction { .length = 1, .cycles = 16, .implementation = load16_impl } },                // LD SP, IMM16
         { 0x3D, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                   // DEC A
@@ -542,12 +580,16 @@ namespace sickboy {
         { 0x57, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },               // LD D, A
         { 0x67, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },               // LD H, A
         { 0x77, Instruction { .length = 1, .cycles = 8, .implementation = load8_imm8_impl } },             // LD [HL], A
+        { 0x78, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },               // LD A, B
         { 0x7B, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },               // LD A, E
         { 0x7C, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl} },                // LD A, H
+        { 0x7D, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },               // LD A, L
+        { 0x86, Instruction { .length = 1, .cycles = 8, .implementation = add_impl } },                    // ADD A, [HL]
         { 0x90, Instruction { .length = 1, .cycles = 4, .implementation = sub_impl } },                    // SUB A, B
         { 0xAF, Instruction { .length = 1, .cycles = 16, .implementation = xor_impl } },                   // XOR A, R8
         { 0xBE, Instruction { .length = 1, .cycles = 8, .implementation = compare_impl } },                // CP A, [HL]
         { 0xC1, Instruction { .length = 1, .cycles = 12, .implementation = pop_impl} },                    // POP BC
+        // { 0xC3, Instruction { .length = 0, .cycles = 12, .implementation = jump_absolute_impl } },         // JP IMM16
         { 0xC5, Instruction { .length = 1, .cycles = 16, .implementation = push_impl } },                  // PUSH BC
         { 0xC9, Instruction { .length = 0, .cycles = 16, .implementation = ret_impl } },                   // RET
         { 0xCB, Instruction { .length = 1, .cycles = 4, .implementation = enable_prefix } },               // PREFIX

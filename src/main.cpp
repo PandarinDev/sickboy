@@ -5,7 +5,7 @@
 using namespace sickboy;
 
 int main() {
-    System system;
+    System system("assets/tetris.gb");
     try {
         // TODO: Currently we are stuck on the cartridge logo check.
         // The MMU mapping to the cartridge + cartridge loading needs to be implemented.
