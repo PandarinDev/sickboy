@@ -6,13 +6,14 @@
 using namespace sickboy;
 
 int main() {
-    CPU cpu{};
+    auto memory = std::make_shared<MMU>();
+    CPU cpu(memory);
     // Read the boot ROM into RAM
     auto rom_contents = FileUtils::read_binary("assets/dmg_boot.bin");
     if (rom_contents.size() != 256) {
         throw std::runtime_error("Invalid size of boot ROM.");
     }
-    std::memcpy(cpu.ram.data(), rom_contents.data(), rom_contents.size());
+    memory->copy(0, rom_contents.data(), rom_contents.size());
     try {
         auto lookup_instruction = [](std::uint8_t instruction_code) -> const Instruction& {
             auto instruction_it = CPU::instruction_set.find(instruction_code);
@@ -34,7 +35,7 @@ int main() {
         while (true) {
             // Fetch instruction
             auto currently_prefixed = cpu.is_prefixed;
-            auto instruction_code = cpu.ram[cpu.registers.pc];
+            auto instruction_code = cpu.memory->read(cpu.registers.pc);
             const auto& instruction = currently_prefixed
                 ? lookup_prefixed_instruction(instruction_code)
                 : lookup_instruction(instruction_code);

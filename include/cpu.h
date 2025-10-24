@@ -1,6 +1,8 @@
 #pragma once
 
-#include <array>
+#include "mmu.h"
+
+#include <memory>
 #include <cstdint>
 #include <variant>
 #include <optional>
@@ -85,8 +87,10 @@ namespace sickboy {
         static std::unordered_map<std::uint8_t, Instruction> instruction_set;
         static std::unordered_map<std::uint8_t, Instruction> prefixed_instruction_set;
 
+        CPU(const std::shared_ptr<MMU>& memory);
+
         Registers registers;
-        std::array<std::uint8_t, 0xFFFF> ram;
+        std::shared_ptr<MMU> memory;
         bool is_prefixed;
 
     };

@@ -49,30 +49,32 @@ namespace sickboy {
         return f() & 0b00010000;
     }
 
-    namespace fetcher {
+    CPU::CPU(const std::shared_ptr<MMU>& memory) : registers({}), memory(memory), is_prefixed(false) {}
 
-        std::optional<InstructionParam> zero_param(CPU&) {
-            return {};
+    std::uint8_t r8_get_value(CPU& cpu, std::uint8_t reg_code) {
+        switch (reg_code) {
+            case 0: return cpu.registers.b();
+            case 1: return cpu.registers.c();
+            case 2: return cpu.registers.d();
+            case 3: return cpu.registers.e();
+            case 4: return cpu.registers.h();
+            case 5: return cpu.registers.l();
+            case 6: return cpu.memory->read(cpu.registers.hl);
+            case 7: return cpu.registers.a();
+            default: throw std::runtime_error("Unknown register code in r8_lookup.");
         }
-
-        std::optional<InstructionParam> one_param_immediate16(CPU& cpu) {
-            return Immediate16(
-                (cpu.ram[0xFF + cpu.registers.pc + 1] << 8) |
-                cpu.ram[0xFF + cpu.registers.pc]);
-        }
-
     }
 
-    std::uint8_t* r8_lookup(CPU& cpu, std::uint8_t reg_code) {
+    void r8_set_value(CPU& cpu, std::uint8_t reg_code, std::uint8_t value) {
         switch (reg_code) {
-            case 0: return &cpu.registers.b();
-            case 1: return &cpu.registers.c();
-            case 2: return &cpu.registers.d();
-            case 3: return &cpu.registers.e();
-            case 4: return &cpu.registers.h();
-            case 5: return &cpu.registers.l();
-            case 6: return &cpu.ram[cpu.registers.hl];
-            case 7: return &cpu.registers.a();
+            case 0: cpu.registers.b() = value; break;
+            case 1: cpu.registers.c() = value; break;
+            case 2: cpu.registers.d() = value; break;
+            case 3: cpu.registers.e() = value; break;
+            case 4: cpu.registers.h() = value; break;
+            case 5: cpu.registers.l() = value; break;
+            case 6: cpu.memory->write(cpu.registers.hl, value); break;
+            case 7: cpu.registers.a() = value; break;
             default: throw std::runtime_error("Unknown register code in r8_lookup.");
         }
     }
@@ -93,12 +95,12 @@ namespace sickboy {
         HL_DECREMENT
     };
 
-    std::pair<std::uint8_t*, RegisterOperation> r16mem_lookup(CPU& cpu, std::uint8_t reg_code) {
+    std::pair<std::uint16_t, RegisterOperation> r16mem_lookup(CPU& cpu, std::uint8_t reg_code) {
         switch (reg_code) {
-            case 0: return std::make_pair(&cpu.ram[cpu.registers.bc], RegisterOperation::NONE);
-            case 1: return std::make_pair(&cpu.ram[cpu.registers.de], RegisterOperation::NONE);
-            case 2: return std::make_pair(&cpu.ram[cpu.registers.hl], RegisterOperation::HL_INCREMENT);
-            case 3: return std::make_pair(&cpu.ram[cpu.registers.hl], RegisterOperation::HL_DECREMENT);
+            case 0: return std::make_pair(cpu.registers.bc, RegisterOperation::NONE);
+            case 1: return std::make_pair(cpu.registers.de, RegisterOperation::NONE);
+            case 2: return std::make_pair(cpu.registers.hl, RegisterOperation::HL_INCREMENT);
+            case 3: return std::make_pair(cpu.registers.hl, RegisterOperation::HL_DECREMENT);
             default: throw std::runtime_error("Unknown register code in r16mem_lookup.");
         }
     }
@@ -111,21 +113,21 @@ namespace sickboy {
             IMM16MEM_SP = 0b1000
         };
 
-        auto instruction = cpu.ram[cpu.registers.pc];
+        auto instruction = cpu.memory->read(cpu.registers.pc);
         // For 8 bit loads the last 3 bits are unique, while for 16 bit loads the last 4 bits of the LD instruction encode the LD type
         auto load_type = static_cast<LoadType>(instruction & 0b00001111);
         if (load_type == LoadType::R16_IMM16) {
             std::uint8_t reg_code = (instruction & 0b00110000) >> 4;
             std::uint16_t* reg = r16_lookup(cpu, reg_code);
             std::uint16_t value = 
-                (cpu.ram[cpu.registers.pc + 2] << 8) |
-                (cpu.ram[cpu.registers.pc + 1] << 0);
+                (cpu.memory->read(cpu.registers.pc + 2) << 8) |
+                (cpu.memory->read(cpu.registers.pc + 1) << 0);
             *reg = value;
         }
         else if (load_type == LoadType::R16MEM_A) {
             std::uint8_t reg_code = (instruction & 0b00110000) >> 4;
-            auto [reg, reg_op] = r16mem_lookup(cpu, reg_code);
-            *reg = cpu.registers.a();
+            auto [reg_value, reg_op] = r16mem_lookup(cpu, reg_code);
+            cpu.memory->write(reg_value, cpu.registers.a());
             // Check if we need to execute a register operation
             if (reg_op == RegisterOperation::HL_INCREMENT) {
                 cpu.registers.hl++;
@@ -140,7 +142,7 @@ namespace sickboy {
         else if (load_type == LoadType::A_R16_MEM) {
             std::uint8_t reg_code = (instruction & 0b00110000) >> 4;
             std::uint16_t* reg = r16_lookup(cpu, reg_code);
-            auto value = cpu.ram[*reg];
+            auto value = cpu.memory->read(*reg);
             cpu.registers.a() = value;
         }
         else throw std::runtime_error("Unimplemented load type in load16_impl.");
@@ -153,13 +155,13 @@ namespace sickboy {
             IMM16MEM_A = 0b0,
             A_IMM16MEM = 0b1,
         };
-        auto instruction = cpu.ram[cpu.registers.pc];
+        auto instruction = cpu.memory->read(cpu.registers.pc);
         auto load_type = static_cast<LoadType>((instruction & 0b00010000) >> 4);
         if (load_type == LoadType::IMM16MEM_A) {
             std::uint16_t value =
-                (cpu.ram[cpu.registers.pc + 2] << 8) |
-                (cpu.ram[cpu.registers.pc + 1] << 0);
-            cpu.ram[value] = cpu.registers.a();
+                (cpu.memory->read(cpu.registers.pc + 2) << 8) |
+                (cpu.memory->read(cpu.registers.pc + 1) << 0);
+            cpu.memory->write(value, cpu.registers.a());
         }
         else throw std::runtime_error("Unimplemented load type in load16_imm16mem_impl.");
 
@@ -167,22 +169,20 @@ namespace sickboy {
     }
 
     std::uint8_t load8_imm8_impl(CPU& cpu) {
-        auto instruction = cpu.ram[cpu.registers.pc];
+        auto instruction = cpu.memory->read(cpu.registers.pc);
         std::uint8_t reg_code = (instruction & 0b00111000) >> 3;
-        std::uint8_t* reg = r8_lookup(cpu, reg_code);
-        std::uint8_t value = cpu.ram[cpu.registers.pc + 1];
-        *reg = value;
+        std::uint8_t value = cpu.memory->read(cpu.registers.pc + 1);
+        r8_set_value(cpu, reg_code, value);
 
         return 0;
     }
 
     std::uint8_t load8_r8_impl(CPU& cpu) {
-        auto instruction = cpu.ram[cpu.registers.pc];
+        auto instruction = cpu.memory->read(cpu.registers.pc);
         std::uint8_t source_code = instruction & 0b111;
         std::uint8_t dest_code = (instruction & 0b111000) >> 3;
-        std::uint8_t* source_reg = r8_lookup(cpu, source_code);
-        std::uint8_t* dest_reg = r8_lookup(cpu, dest_code);
-        *dest_reg = *source_reg;
+        std::uint8_t source_value = r8_get_value(cpu, source_code);
+        r8_set_value(cpu, dest_code, source_value);
 
         return 0;
     }
@@ -195,21 +195,18 @@ namespace sickboy {
             A_IMM8 = 0b10000,
         };
 
-        auto instruction = cpu.ram[cpu.registers.pc];
+        auto instruction = cpu.memory->read(cpu.registers.pc);
         auto load_type = static_cast<LoadType>(instruction & 0b00011111);
         if (load_type == LoadType::C_A) {
-            auto destination = &cpu.ram[0xFF00 + cpu.registers.c()];
-            *destination = cpu.registers.a();
+            cpu.memory->write(0xFF00 + cpu.registers.c(), cpu.registers.a());
         }
         else if (load_type == LoadType::IMM8_A) {
-            auto offset = cpu.ram[cpu.registers.pc + 1];
-            auto destination = &cpu.ram[0xFF00 + offset];
-            *destination = cpu.registers.a();
+            auto offset = cpu.memory->read(cpu.registers.pc + 1);
+            cpu.memory->write(0xFF00 + offset, cpu.registers.a());
         }
         else if (load_type == LoadType::A_IMM8) {
-            auto offset = cpu.ram[cpu.registers.pc + 1];
-            auto value = cpu.ram[0xFF00 + offset];
-            cpu.registers.a() = value;
+            auto offset = cpu.memory->read(cpu.registers.pc + 1);
+            cpu.memory->write(cpu.registers.a(), 0xFF00 + offset);
         }
         else throw std::runtime_error("Unimplemented load type in load8_high_impl.");
 
@@ -221,16 +218,16 @@ namespace sickboy {
             A_R8 = 0b00010101,
             A_IMM8 = 0b00011101
         };
-        auto instruction = cpu.ram[cpu.registers.pc];
+        auto instruction = cpu.memory->read(cpu.registers.pc);
         // XOR type is stored in the upper 5 bits of the instruction
         auto xor_type = static_cast<XORType>((instruction & 0b11111000) >> 3);
         if (xor_type == XORType::A_R8) {
             std::uint8_t reg_code = instruction & 0b00000111;
-            std::uint8_t* reg = r8_lookup(cpu, reg_code);
-            cpu.registers.a() = cpu.registers.a() ^ *reg;
+            std::uint8_t reg_value = r8_get_value(cpu, reg_code);
+            cpu.registers.a() = cpu.registers.a() ^ reg_value;
         }
         else if (xor_type == XORType::A_IMM8) {
-            std::uint8_t value = cpu.ram[cpu.registers.pc + 1];
+            std::uint8_t value = cpu.memory->read(cpu.registers.pc + 1);
             cpu.registers.a() = cpu.registers.a() ^ value;
         }
 
@@ -259,7 +256,7 @@ namespace sickboy {
     }
 
     std::uint8_t jump_impl(CPU& cpu) {
-        auto instruction = cpu.ram[cpu.registers.pc];
+        auto instruction = cpu.memory->read(cpu.registers.pc);
         auto is_conditional = ((instruction & 0b00100000) >> 5) != 0;
         if (is_conditional) {
             auto condition_flag_code = (instruction & 00011000) >> 3;
@@ -270,12 +267,12 @@ namespace sickboy {
             }
             // The offset for the jump is a signed relative offset from the address AFTER the current instruction (including its parameter)
             // However, since CPU tick logic will add the length of the current instruction (2) to PC anyways we will exclude that here.
-            auto offset = static_cast<std::int8_t>(cpu.ram[cpu.registers.pc + 1]);
+            auto offset = static_cast<std::int8_t>(cpu.memory->read(cpu.registers.pc + 1));
             // We upcast the values to 32 bit integers than downcast back to 16 bit unsigned integer for PC.
             // This is to protect PC against underflows/overflows. The narrowing static cast will modulo the result,
             // which is exactly the behavior the the DMG CPU does for underflow/overflow.
             cpu.registers.pc = static_cast<std::uint16_t>(static_cast<std::int32_t>(cpu.registers.pc) + static_cast<std::int32_t>(offset));
-            
+
             // If we jumped this instruction takes 4 cycles longer
             return 4;
         }
@@ -283,13 +280,14 @@ namespace sickboy {
     }
 
     std::uint8_t inc8_impl(CPU& cpu) {
-        auto instruction = cpu.ram[cpu.registers.pc];
+        auto instruction = cpu.memory->read(cpu.registers.pc);
         std::uint8_t reg_code = (instruction & 0b00111000) >> 3;
-        std::uint8_t* reg = r8_lookup(cpu, reg_code);
-        auto half_carry = (((*reg) & 0x0F) + 1) > 0x0F;
-        *reg = ((*reg) == 0xFF) ? 0 : ((*reg) + 1);
+        std::uint8_t reg_value = r8_get_value(cpu, reg_code);
+        auto half_carry = ((reg_value & 0x0F) + 1) > 0x0F;
+        auto new_value = (reg_value == 0xFF) ? 0 : (reg_value + 1);
+        r8_set_value(cpu, reg_code, new_value);
 
-        cpu.registers.set_flag_z(*reg == 0);
+        cpu.registers.set_flag_z(new_value == 0);
         cpu.registers.set_flag_n(false);
         cpu.registers.set_flag_h(half_carry);
 
@@ -297,7 +295,7 @@ namespace sickboy {
     }
 
     std::uint8_t inc16_impl(CPU& cpu) {
-        auto instruction = cpu.ram[cpu.registers.pc];
+        auto instruction = cpu.memory->read(cpu.registers.pc);
         std::uint8_t reg_code = (instruction & 0b00110000) >> 4;
         std::uint16_t* reg = r16_lookup(cpu, reg_code);
         *reg = ((*reg) == 0xFFFF) ? 0 : ((*reg) + 1);
@@ -308,8 +306,8 @@ namespace sickboy {
     void push_value(CPU& cpu, std::uint16_t value) {
         std::uint8_t high_bits = (value & (0xFF << 8)) >> 8;
         std::uint8_t low_bits = value & 0xFF;
-        cpu.ram[--cpu.registers.sp] = high_bits;
-        cpu.ram[--cpu.registers.sp] = low_bits;
+        cpu.memory->write(--cpu.registers.sp, high_bits);
+        cpu.memory->write(--cpu.registers.sp, low_bits);
     }
 
     std::uint8_t call_impl(CPU& cpu) {
@@ -317,7 +315,7 @@ namespace sickboy {
             UNCONDITIONAL = 0b101,
             CONDITIONAL = 0b100
         };
-        auto instruction = cpu.ram[cpu.registers.pc];
+        auto instruction = cpu.memory->read(cpu.registers.pc);
         auto call_type = static_cast<CallType>(instruction & 0b111);
         if (call_type == CallType::UNCONDITIONAL) {
             // First we need to store the address of the next instruction at SP
@@ -328,8 +326,8 @@ namespace sickboy {
 
             // Set PC to the new address
             std::uint16_t new_address =
-                (cpu.ram[cpu.registers.pc + 2] << 8) |
-                (cpu.ram[cpu.registers.pc + 1] << 0);
+                (cpu.memory->read(cpu.registers.pc + 2) << 8) |
+                (cpu.memory->read(cpu.registers.pc + 1) << 0);
             cpu.registers.pc = new_address;
 
             return 0;
@@ -348,7 +346,7 @@ namespace sickboy {
     }
 
     std::uint8_t push_impl(CPU& cpu) {
-        auto instruction = cpu.ram[cpu.registers.pc];
+        auto instruction = cpu.memory->read(cpu.registers.pc);
         auto reg_code = (instruction & 0b00110000) >> 4;
         auto reg = r16stk_lookup(cpu, reg_code);
         push_value(cpu, *reg);
@@ -357,15 +355,16 @@ namespace sickboy {
     }
 
     std::uint8_t rotate_left_impl(CPU& cpu, bool set_zero_flag) {
-        auto instruction = cpu.ram[cpu.registers.pc];
+        auto instruction = cpu.memory->read(cpu.registers.pc);
         std::uint8_t reg_code = instruction & 0b111;
-        std::uint8_t* reg = r8_lookup(cpu, reg_code);
-        auto new_carry_value = ((*reg) & 0b10000000) != 0;
-        *reg = (*reg) << 1;
-        *reg &= 0b11111110;
-        *reg |= (cpu.registers.get_flag_c() ? 1 : 0);
+        std::uint8_t reg_value = r8_get_value(cpu, reg_code);
+        auto new_carry_value = (reg_value & 0b10000000) != 0;
+        std::uint8_t new_value = reg_value << 1;
+        new_value &= 0b11111110;        
+        new_value |= (cpu.registers.get_flag_c() ? 1 : 0);
+        r8_set_value(cpu, reg_code, new_value);
 
-        cpu.registers.set_flag_z(set_zero_flag ? ((*reg) == 0) : 0);
+        cpu.registers.set_flag_z(set_zero_flag ? (new_value == 0) : 0);
         cpu.registers.set_flag_n(false);
         cpu.registers.set_flag_h(false);
         cpu.registers.set_flag_c(new_carry_value);
@@ -381,11 +380,11 @@ namespace sickboy {
     }
 
     std::uint8_t pop_value(CPU& cpu) {
-        return cpu.ram[cpu.registers.sp++];
+        return cpu.memory->read(cpu.registers.sp++);
     }
 
     std::uint8_t pop_impl(CPU& cpu) {
-        auto instruction = cpu.ram[cpu.registers.pc];
+        auto instruction = cpu.memory->read(cpu.registers.pc);
         auto reg_code = (instruction & 0b00110000) >> 4;
         auto reg = r16stk_lookup(cpu, reg_code);
         *reg = pop_value(cpu) << 0;
@@ -395,13 +394,14 @@ namespace sickboy {
     }
 
     std::uint8_t dec8_impl(CPU& cpu) {
-        auto instruction = cpu.ram[cpu.registers.pc];
+        auto instruction = cpu.memory->read(cpu.registers.pc);
         std::uint8_t reg_code = (instruction & 0b00111000) >> 3;
-        std::uint8_t* reg = r8_lookup(cpu, reg_code);
-        auto half_carry = ((*reg) & 0x0F) == 0;
-        *reg = ((*reg) == 0) ? 0xFF : ((*reg) - 1);
+        std::uint8_t reg_value = r8_get_value(cpu, reg_code);
+        auto half_carry = (reg_value & 0x0F) == 0;
+        auto new_value = (reg_value == 0) ? 0xFF : (reg_value - 1);
+        r8_set_value(cpu, reg_code, new_value);
 
-        cpu.registers.set_flag_z((*reg) == 0);
+        cpu.registers.set_flag_z(new_value == 0);
         cpu.registers.set_flag_n(true);
         cpu.registers.set_flag_h(half_carry);
 
@@ -420,12 +420,12 @@ namespace sickboy {
             REG = 0b10111,
             IMM8 = 0b11111,
         };
-        auto instruction = cpu.ram[cpu.registers.pc];
+        auto instruction = cpu.memory->read(cpu.registers.pc);
         auto compare_type = static_cast<CompareType>((instruction & 0b11111000) >> 3);
         auto first = cpu.registers.a();
         auto second = (compare_type == CompareType::IMM8)
-            ? cpu.ram[cpu.registers.pc + 1]
-            : *r8_lookup(cpu, instruction & 0b111);
+            ? cpu.memory->read(cpu.registers.pc + 1)
+            : r8_get_value(cpu, instruction & 0b111);
 
         cpu.registers.set_flag_z(first == second);
         cpu.registers.set_flag_n(true);
@@ -482,12 +482,12 @@ namespace sickboy {
     };
 
     std::uint8_t bit_impl(CPU& cpu) {
-        auto instruction = cpu.ram[cpu.registers.pc];
+        auto instruction = cpu.memory->read(cpu.registers.pc);
         auto bit = (instruction & 0b00111000) >> 3;
         auto reg_code = instruction & 0b00000111;
-        auto reg = r8_lookup(cpu, reg_code);
+        auto reg_value = r8_get_value(cpu, reg_code);
         // We need to the complement of the Nth bit of reg
-        auto flag_value = !(((*reg) & (0b1 << bit)) >> bit);
+        auto flag_value = !((reg_value & (0b1 << bit)) >> bit);
 
         // Flags:
         // Zero is set depending on the result
