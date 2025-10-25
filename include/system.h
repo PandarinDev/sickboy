@@ -17,11 +17,11 @@ namespace sickboy {
         std::shared_ptr<MMU> memory;
         CPU cpu;
         PPU ppu;
-        double last_frame;
 
         System(const std::filesystem::path& cartridge_path);
 
-        void tick();
+        // Returns true if a new frame should be rendered
+        bool tick();
 
     };
 

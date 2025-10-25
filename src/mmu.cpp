@@ -19,11 +19,15 @@ namespace sickboy {
         }
     }
 
-    void MMU::copy(std::uint16_t address, const std::uint8_t* data, std::size_t len) {
+    void MMU::copy_to(std::uint16_t address, const std::uint8_t* data, std::size_t len) {
         std::memcpy(&ram[address], data, len);
     }
 
-    void MMU::copy_boot_rom(const std::uint8_t* data) {
+    void MMU::copy_from(std::uint16_t address, std::uint8_t* destination, std::size_t len) const {
+        std::memcpy(destination, &ram[address], len);
+    }
+
+    void MMU::copy_to_boot_rom(const std::uint8_t* data) {
         std::memcpy(boot_rom.data(), data, boot_rom.size());
     }
 

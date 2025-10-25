@@ -1,0 +1,12 @@
+{
+    "dependencies": [
+        "glfw3",
+        {
+            "name": "glad",
+            "features": [
+                "gl-api-33",
+                "loader"
+            ]
+        }
+    ]
+}

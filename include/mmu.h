@@ -13,8 +13,10 @@ namespace sickboy {
         void write(std::uint16_t address, std::uint8_t value);
         
         // Never use this for writing data that could trigger memory mapped I/O
-        void copy(std::uint16_t address, const std::uint8_t* data, std::size_t length);
-        void copy_boot_rom(const std::uint8_t* data);
+        void copy_to(std::uint16_t address, const std::uint8_t* data, std::size_t length);
+        void copy_from(std::uint16_t address, std::uint8_t* destination, std::size_t length) const;
+
+        void copy_to_boot_rom(const std::uint8_t* data);
         void set_boot_rom_enabled(bool on);
 
     private:
