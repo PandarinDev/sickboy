@@ -307,7 +307,7 @@ namespace sickboy {
             cpu.registers.pc = static_cast<std::uint16_t>(static_cast<std::int32_t>(cpu.registers.pc) + static_cast<std::int32_t>(offset));
         };
         if (is_conditional) {
-            auto condition_flag_code = (instruction & 00011000) >> 3;
+            std::uint8_t condition_flag_code = (instruction & 00011000) >> 3;
             auto flag_value = flag_lookup(cpu, condition_flag_code);
             // If the flag is not set do nothing
             if (!flag_value) {
@@ -345,7 +345,7 @@ namespace sickboy {
         std::uint8_t reg_code = (instruction & 0b00111000) >> 3;
         std::uint8_t reg_value = r8_get_value(cpu, reg_code);
         auto half_carry = ((reg_value & 0x0F) + 1) > 0x0F;
-        auto new_value = (reg_value == 0xFF) ? 0 : (reg_value + 1);
+        std::uint8_t new_value = (reg_value == 0xFF) ? 0 : (reg_value + 1);
         r8_set_value(cpu, reg_code, new_value);
 
         cpu.registers.set_flag_z(new_value == 0);
@@ -408,7 +408,7 @@ namespace sickboy {
 
     std::uint8_t push_impl(CPU& cpu) {
         auto instruction = cpu.memory->read(cpu.registers.pc);
-        auto reg_code = (instruction & 0b00110000) >> 4;
+        std::uint8_t reg_code = (instruction & 0b00110000) >> 4;
         auto reg = r16stk_lookup(cpu, reg_code);
         push_value(cpu, *reg);
 
@@ -446,7 +446,7 @@ namespace sickboy {
 
     std::uint8_t pop_impl(CPU& cpu) {
         auto instruction = cpu.memory->read(cpu.registers.pc);
-        auto reg_code = (instruction & 0b00110000) >> 4;
+        std::uint8_t reg_code = (instruction & 0b00110000) >> 4;
         auto reg = r16stk_lookup(cpu, reg_code);
         *reg = pop_value(cpu) << 0;
         *reg |= pop_value(cpu) << 8;
@@ -459,7 +459,7 @@ namespace sickboy {
         std::uint8_t reg_code = (instruction & 0b00111000) >> 3;
         std::uint8_t reg_value = r8_get_value(cpu, reg_code);
         auto half_carry = (reg_value & 0x0F) == 0;
-        auto new_value = (reg_value == 0) ? 0xFF : (reg_value - 1);
+        std::uint8_t new_value = (reg_value == 0) ? 0xFF : (reg_value - 1);
         r8_set_value(cpu, reg_code, new_value);
 
         cpu.registers.set_flag_z(new_value == 0);
@@ -604,7 +604,7 @@ namespace sickboy {
     std::uint8_t bit_impl(CPU& cpu) {
         auto instruction = cpu.memory->read(cpu.registers.pc);
         auto bit = (instruction & 0b00111000) >> 3;
-        auto reg_code = instruction & 0b00000111;
+        std::uint8_t reg_code = instruction & 0b00000111;
         auto reg_value = r8_get_value(cpu, reg_code);
         // We need to the complement of the Nth bit of reg
         auto flag_value = !((reg_value & (0b1 << bit)) >> bit);

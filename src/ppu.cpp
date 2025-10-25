@@ -34,6 +34,11 @@ namespace sickboy {
     PPU::PPU(const std::shared_ptr<MMU>& memory) :
         memory(memory), mode(PPUMode::OAM_SCAN), current_mode_dots(0), last_draw_dots_length(0), current_scanline(0) {}
 
+    bool PPU::is_lcd_and_ppu_enabled() const {
+        static const std::uint16_t LCD_CONTROL_BYTE_ADDRESS = 0xFF40;
+        return memory->read(LCD_CONTROL_BYTE_ADDRESS) & 0b10000000;
+    }
+
     bool PPU::tick() {
         // TODO: Implement VRAM locking while certain modes are active
 
@@ -77,15 +82,6 @@ namespace sickboy {
         memory->write(LCD_Y_COORD_ADDRESS, current_scanline);
     }
 
-    struct __attribute__((packed)) OAMEntry {
-        std::uint8_t y;
-        std::uint8_t x;
-        std::uint8_t tile_index;
-        std::uint8_t flags;
-    };
-
-    using TileEntry = std::array<std::uint16_t, 8>;
-
     std::uint8_t get_tile_color_index(std::uint16_t row_colors, std::uint8_t pixel) {
         std::uint8_t higher_bits = ((row_colors & 0xFF00) >> 8);
         std::uint8_t lower_bits = (row_colors & 0xFF);
@@ -105,20 +101,49 @@ namespace sickboy {
         return COLOR_VALUE_LOOKUP[color_value];
     }
 
-    PPU::Frame PPU::compute_frame() const {
-        PPU::Frame frame{};
-        // TODO: This frame initialization to white probably should be removed
-        for (std::size_t i = 0; i < frame.size(); ++i) {
-            frame[i] = 0xFF;
+    PPU::CroppedFrame PPU::compute_frame() const {
+        PPU::FullFrame frame{};
+
+        // TODO: We are currently ignoring some of LCD control data (such as OBJ size)
+        static constexpr std::uint16_t LCD_CONTROL_BYTE_ADDRESS = 0xFF40;
+        static constexpr std::uint16_t BACKGROUND_TILEMAP_START_ADDRESS = 0x9800;
+        static constexpr std::uint16_t NUM_BACKGROUND_TILES = 32 * 32;
+        static constexpr std::uint16_t COLOR_PALETTE_ADDR = 0xFF47;
+        std::uint8_t control_byte = memory->read(LCD_CONTROL_BYTE_ADDRESS);
+        std::uint16_t bg_window_tile_start_addr = ((control_byte & 0b00010000) != 0)
+            ? 0x8000
+            : 0x8800;
+
+        // Draw background
+        std::uint8_t color_palette = memory->read(COLOR_PALETTE_ADDR);
+        for (std::uint16_t i = 0; i < NUM_BACKGROUND_TILES; ++i) {
+            std::uint8_t tile_idx = memory->read(BACKGROUND_TILEMAP_START_ADDRESS + i);
+            static constexpr auto tile_entry_size = sizeof(TileEntry::value_type) * std::tuple_size_v<TileEntry>;
+            TileEntry tile_entry;
+            memory->copy_from(bg_window_tile_start_addr + tile_idx * tile_entry_size, reinterpret_cast<std::uint8_t*>(&tile_entry), tile_entry_size);
+            std::uint8_t x_offset = (i % 32) * 8;
+            std::uint8_t y_offset = static_cast<std::uint8_t>((i / 32) * 8);
+            draw_tile(tile_entry, x_offset, y_offset, color_palette, false, frame);
         }
 
-        // TODO: For now only objects are rendered, windows and BG objects are not.
-        // TODO: Additionally even for objects flags (such as flip X/Y, etc.) are ignored.
+        // TODO: Draw window
+
+        // Draw objects if object rendering is enabled
+        bool is_obj_rendering_enabled = control_byte & 0b00000010;
+        if (is_obj_rendering_enabled) {
+            draw_objects(color_palette, frame);
+        }
+
+        return crop_frame(frame);
+    }
+
+    void PPU::draw_objects(std::uint8_t color_palette, PPU::FullFrame& frame) const {
+        // TODO: This object support is very rudimentary and many things (such as object flags) are ignored at the moment.
         static constexpr std::uint16_t OBJ_TILE_START_ADDR = 0x8000;
         static constexpr std::uint16_t OAM_START_ADDR = 0xFE00;
-        static constexpr std::uint16_t COLOR_PALETTE_ADDR = 0xFF47;
-        static constexpr auto NUM_OAM_ENTRIES = 40;
-        for (std::size_t i = 0; i < NUM_OAM_ENTRIES; ++i) {
+        static constexpr std::uint8_t NUM_OAM_ENTRIES = 40;
+
+        for (std::uint8_t i = 0; i < NUM_OAM_ENTRIES; ++i) {
             static constexpr auto object_entry_size = sizeof(OAMEntry);
             // Copy object attribute mapping entry from VRAM
             OAMEntry object_entry;
@@ -128,22 +153,50 @@ namespace sickboy {
             TileEntry tile_entry;
             std::uint16_t tile_offset = object_entry.tile_index * tile_entry_size;
             memory->copy_from(OBJ_TILE_START_ADDR + tile_offset, reinterpret_cast<std::uint8_t*>(tile_entry.data()), tile_entry_size);
-            // Write color data to frame buffer
-            std::uint8_t color_palette = memory->read(COLOR_PALETTE_ADDR);
-            for (std::uint8_t y = 0; y < 8; ++y) {
-                std::uint16_t row_colors = tile_entry[y];
-                for (std::uint8_t x = 0; x < 8; ++x) {
-                    auto pixel_color_index = get_tile_color_index(row_colors, x);
-                    // Ignore 0 which means transparent
-                    if (pixel_color_index > 0) {
-                        auto color = color_index_to_grayscale_value(color_palette, pixel_color_index);
-                        frame[y * LCD_WIDTH + x] = color;
-                    }
+            draw_tile(tile_entry, object_entry.x, object_entry.y, color_palette, true, frame);
+        }
+    }
+
+    void PPU::draw_tile(
+        const PPU::TileEntry& tile,
+        std::uint8_t x_offset,
+        std::uint8_t y_offset,
+        std::uint8_t color_palette,
+        bool is_object,
+        FullFrame& frame) const {
+        // Write color data to frame buffer
+        for (std::uint8_t y = 0; y < 8; ++y) {
+            std::uint16_t row_colors = tile[y];
+            for (std::uint8_t x = 0; x < 8; ++x) {
+                auto pixel_color_index = get_tile_color_index(row_colors, x);
+                // For objects color 0 means transparent - simply skip the pixel
+                if (is_object && pixel_color_index == 0) {
+                    continue;
                 }
+                auto color = color_index_to_grayscale_value(color_palette, pixel_color_index);
+                // TODO: Double check if the offset logic is correct
+                frame[(y + y_offset) * 256 + x + x_offset] = color;
+            }
+        }
+    }
+
+    PPU::CroppedFrame PPU::crop_frame(const FullFrame& frame) const {
+        static constexpr std::uint16_t SCROLL_Y_ADDR = 0xFF42;
+        static constexpr std::uint16_t SCROLL_X_ADDR = 0xFF43;
+        CroppedFrame result;
+        std::uint8_t scroll_y_value = memory->read(SCROLL_Y_ADDR);
+        std::uint8_t scroll_x_value = memory->read(SCROLL_X_ADDR);
+        for (std::uint8_t y = 0; y < LCD_HEIGHT; ++y) {
+            for (std::uint8_t x = 0; x < LCD_WIDTH; ++x) {
+                // Here we are essentially abusing that unsigned integers are guaranteed to wrap-around,
+                // so we force these values to wrap around then use the resulting values to reindex the full frame.
+                std::uint8_t final_y = y + scroll_y_value;
+                std::uint8_t final_x = x + scroll_x_value;
+                result[y * LCD_WIDTH + x] = frame[final_y * 255 + final_x];
             }
         }
 
-        return frame;
+        return result;
     }
 
 }

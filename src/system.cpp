@@ -34,6 +34,9 @@ namespace sickboy {
         // This is of course not entirely accurate since these subsystems are meant to run asynchronously
         // so in an accurate emulation the PPU might read something from the CPU in-between instructions.
         auto used_cycles = cpu.tick();
+        if (!ppu.is_lcd_and_ppu_enabled()) {
+            return false;
+        }
         auto should_render_new_frame = false;
         for (std::uint8_t i = 0; i < used_cycles; ++i) {
             should_render_new_frame |= ppu.tick();

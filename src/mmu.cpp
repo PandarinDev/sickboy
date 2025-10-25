@@ -34,5 +34,5 @@ namespace sickboy {
     void MMU::set_boot_rom_enabled(bool on) {
         boot_rom_enabled = on;
     }
-
+    
 }
