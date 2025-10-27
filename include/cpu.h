@@ -19,6 +19,7 @@ namespace sickboy {
         std::uint16_t hl;
         std::uint16_t sp;
         std::uint16_t pc;
+        bool ime; // Interrupt master enable
 
         // Access to 8 bit registers
         std::uint8_t& a();
@@ -35,6 +36,7 @@ namespace sickboy {
         void set_flag_n(bool on);
         void set_flag_h(bool on);
         void set_flag_c(bool on);
+        void set_ime(bool on);
 
         bool get_flag_z();
         bool get_flag_n();
