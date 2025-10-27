@@ -13,25 +13,27 @@ namespace sickboy::gfx {
     }
 
     VBO VBO::create_quad(float size) {
+        // Note that texture coordinates are flipped because GB uses a top-left [0,0]
+        // coordinate system while OGL uses a bottom-left [0,0] coordinate system.
         return VBO::create({
             // Bottom left
             -size, -size,
-            0.0f, 0.0f,
+            0.0f, 1.0f,
             // Bottom right
             size, -size,
-            1.0f, 0.0f,
+            1.0f, 1.0f,
             // Top right
             size, size,
-            1.0f, 1.0f,
+            1.0f, 0.0f,
             // Bottom left
             -size, -size,
-            0.0f, 0.0f,
+            0.0f, 1.0f,
             // Top right
             size, size,
-            1.0f, 1.0f,
+            1.0f, 0.0f,
             // Top left
             -size, size,
-            0.0f, 1.0f
+            0.0f, 0.0f
         });
     }
 

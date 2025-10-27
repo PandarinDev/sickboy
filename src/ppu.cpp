@@ -204,7 +204,7 @@ namespace sickboy {
                 // so we force these values to wrap around then use the resulting values to reindex the full frame.
                 std::uint8_t final_y = y + scroll_y_value;
                 std::uint8_t final_x = x + scroll_x_value;
-                result.at(y * LCD_WIDTH + x) = frame.at(final_y * 255 + final_x);
+                result[y * LCD_WIDTH + x] = frame[final_y * 256 + final_x];
             }
         }
 
