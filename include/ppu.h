@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 namespace sickboy {
 
@@ -52,6 +53,7 @@ namespace sickboy {
         // Returns true if a new frame should be rendered
         bool tick();
         CroppedFrame compute_frame() const;
+        std::vector<std::uint8_t> dump_vram() const;
 
     private:
 

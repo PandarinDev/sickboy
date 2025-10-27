@@ -77,9 +77,8 @@ namespace sickboy {
             ? lookup_prefixed_instruction(instruction_code)
             : lookup_instruction(instruction_code);
         auto additional_cycles = instruction.implementation(*this);
-        // We upcast and then downcast our new PC address to protect against overflow - on narrowing static cast C++
-        // will modulo the PC address which is the exact behavior (wrapping around PC) of the DMG CPU in this case.
-        registers.pc = static_cast<std::uint16_t>(static_cast<std::uint32_t>(registers.pc) + static_cast<std::uint32_t>(instruction.length));
+        // Since we are adding unsigned ints here wrap around is guaranteed in case of PC overflow
+        registers.pc = registers.pc + instruction.length;
         // If the cycle started out prefixed reset the prefix
         if (was_prefixed) {
             is_prefixed = false;
@@ -307,7 +306,7 @@ namespace sickboy {
             cpu.registers.pc = static_cast<std::uint16_t>(static_cast<std::int32_t>(cpu.registers.pc) + static_cast<std::int32_t>(offset));
         };
         if (is_conditional) {
-            std::uint8_t condition_flag_code = (instruction & 00011000) >> 3;
+            std::uint8_t condition_flag_code = (instruction & 0b00011000) >> 3;
             auto flag_value = flag_lookup(cpu, condition_flag_code);
             // If the flag is not set do nothing
             if (!flag_value) {
@@ -421,7 +420,6 @@ namespace sickboy {
         std::uint8_t reg_value = r8_get_value(cpu, reg_code);
         auto new_carry_value = (reg_value & 0b10000000) != 0;
         std::uint8_t new_value = reg_value << 1;
-        new_value &= 0b11111110;        
         new_value |= (cpu.registers.get_flag_c() ? 1 : 0);
         r8_set_value(cpu, reg_code, new_value);
 
@@ -572,11 +570,12 @@ namespace sickboy {
         { 0x23, Instruction { .length = 1, .cycles = 8, .implementation = inc16_impl } },                  // INC HL
         { 0x24, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                   // INC H
         { 0x28, Instruction { .length = 2, .cycles = 8, .implementation = jump_relative_impl } },          // JR Z, IMM8
+        { 0x2E, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },             // LD L, IMM8
         { 0x31, Instruction { .length = 3, .cycles = 16, .implementation = load16_impl } },                // LD SP, IMM16
         { 0x32, Instruction { .length = 1, .cycles = 16, .implementation = load16_impl } },                // LD SP, IMM16
         { 0x3D, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                   // DEC A
         { 0x3E, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },             // LD A, IMM8
-        { 0x4F, Instruction { .length = 1, .cycles = 4, .implementation = load8_imm8_impl } },             // LD C, A
+        { 0x4F, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },               // LD C, A
         { 0x57, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },               // LD D, A
         { 0x67, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },               // LD H, A
         { 0x77, Instruction { .length = 1, .cycles = 8, .implementation = load8_imm8_impl } },             // LD [HL], A

@@ -87,8 +87,10 @@ namespace sickboy {
     std::uint8_t get_tile_color_index(std::uint16_t row_colors, std::uint8_t pixel) {
         std::uint8_t higher_bits = ((row_colors & 0xFF00) >> 8);
         std::uint8_t lower_bits = (row_colors & 0xFF);
+        // High bits are the first pixels so pixel 0 is the 7th bit
+        std::uint8_t shift = 7 - pixel;
         // Somewhat confusingly the high byte gives the lower bit of the returned color index
-        return (((lower_bits & (1 << pixel)) >> pixel) << 1) | ((higher_bits & (1 << pixel)) >> pixel);
+        return (((lower_bits & (1 << shift)) >> shift) << 1) | ((higher_bits & (1 << shift)) >> shift);
     }
 
     std::uint8_t color_index_to_grayscale_value(std::uint8_t color_palette, std::uint8_t color_index) {
@@ -112,6 +114,7 @@ namespace sickboy {
         static constexpr std::uint16_t NUM_BACKGROUND_TILES = 32 * 32;
         static constexpr std::uint16_t COLOR_PALETTE_ADDR = 0xFF47;
         std::uint8_t control_byte = memory->read(LCD_CONTROL_BYTE_ADDRESS);
+        // TODO: This is incorrect for unsigned tile addressing
         std::uint16_t bg_window_tile_start_addr = ((control_byte & 0b00010000) != 0)
             ? 0x8000
             : 0x8800;
@@ -137,6 +140,13 @@ namespace sickboy {
         }
 
         return crop_frame(frame);
+    }
+
+    std::vector<std::uint8_t> PPU::dump_vram() const {
+        std::vector<std::uint8_t> result;
+        result.resize(0x2000); // 8kB
+        memory->copy_from(0x8000, result.data(), result.size());
+        return result;
     }
 
     void PPU::draw_objects(std::uint8_t color_palette, PPU::FullFrame& frame) const {
@@ -188,7 +198,6 @@ namespace sickboy {
         CroppedFrame result;
         std::uint8_t scroll_y_value = memory->read(SCROLL_Y_ADDR);
         std::uint8_t scroll_x_value = memory->read(SCROLL_X_ADDR);
-        std::cout << "Scroll is [" << static_cast<int>(scroll_x_value) << "," << static_cast<int>(scroll_y_value) << "]" << std::endl;
         for (std::uint8_t y = 0; y < LCD_HEIGHT; ++y) {
             for (std::uint8_t x = 0; x < LCD_WIDTH; ++x) {
                 // Here we are essentially abusing that unsigned integers are guaranteed to wrap-around,
