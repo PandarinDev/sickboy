@@ -2,6 +2,8 @@
 
 #include <stdexcept>
 
+#include <iostream>
+
 namespace sickboy {
 
     std::uint16_t get_max_mode_dot_length(PPUMode mode) {
@@ -98,7 +100,7 @@ namespace sickboy {
             0x00, // 3 = Black
         };
         auto color_value = (color_palette & (0b11 << (color_index * 2))) >> (color_index * 2);
-        return COLOR_VALUE_LOOKUP[color_value];
+        return COLOR_VALUE_LOOKUP.at(color_value);
     }
 
     PPU::CroppedFrame PPU::compute_frame() const {
@@ -175,7 +177,7 @@ namespace sickboy {
                 }
                 auto color = color_index_to_grayscale_value(color_palette, pixel_color_index);
                 // TODO: Double check if the offset logic is correct
-                frame[(y + y_offset) * 256 + x + x_offset] = color;
+                frame.at((y + y_offset) * 256 + x + x_offset) = color;
             }
         }
     }
@@ -186,13 +188,14 @@ namespace sickboy {
         CroppedFrame result;
         std::uint8_t scroll_y_value = memory->read(SCROLL_Y_ADDR);
         std::uint8_t scroll_x_value = memory->read(SCROLL_X_ADDR);
+        std::cout << "Scroll is [" << static_cast<int>(scroll_x_value) << "," << static_cast<int>(scroll_y_value) << "]" << std::endl;
         for (std::uint8_t y = 0; y < LCD_HEIGHT; ++y) {
             for (std::uint8_t x = 0; x < LCD_WIDTH; ++x) {
                 // Here we are essentially abusing that unsigned integers are guaranteed to wrap-around,
                 // so we force these values to wrap around then use the resulting values to reindex the full frame.
                 std::uint8_t final_y = y + scroll_y_value;
                 std::uint8_t final_x = x + scroll_x_value;
-                result[y * LCD_WIDTH + x] = frame[final_y * 255 + final_x];
+                result.at(y * LCD_WIDTH + x) = frame.at(final_y * 255 + final_x);
             }
         }
 

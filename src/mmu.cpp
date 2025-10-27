@@ -2,7 +2,7 @@
 
 namespace sickboy {
 
-    MMU::MMU() : boot_rom_enabled(true) {}
+    MMU::MMU() : ram({}), boot_rom({}), boot_rom_enabled(true) {}
 
     std::uint8_t MMU::read(std::uint16_t address) const {
         if (boot_rom_enabled && address <= 0xFF) {

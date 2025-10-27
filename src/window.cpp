@@ -8,9 +8,16 @@ namespace sickboy {
         if (!glfwInit()) {
             throw std::runtime_error("Failed to initialize GLFW.");
         }
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
+        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
+        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
         handle = glfwCreateWindow(width, height, title.c_str(), nullptr, nullptr);
         if (!handle) {
-            throw std::runtime_error("Failed to create GLFW window.");
+            const char* error_description;
+            glfwGetError(&error_description);
+            throw std::runtime_error("Failed to create GLFW window: " + std::string(error_description));
         }
         glfwMakeContextCurrent(handle);
     }
