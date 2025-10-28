@@ -204,8 +204,20 @@ namespace sickboy {
                 (cpu.memory->read(cpu.registers.pc + 1) << 0);
             cpu.memory->write(value, cpu.registers.a());
         }
+        else if (load_type == LoadType::A_IMM16MEM) {
+            std::uint16_t value =
+                (cpu.memory->read(cpu.registers.pc + 2) << 8) |
+                (cpu.memory->read(cpu.registers.pc + 1) << 0);
+            cpu.registers.a() = cpu.memory->read(value);
+        }
         else throw std::runtime_error("Unimplemented load type in load16_imm16mem_impl.");
 
+        return 0;
+    }
+
+    std::uint8_t load_sp_hl(CPU& cpu) {
+        // This is the only r16 to r16 load that the CPU supports
+        cpu.registers.sp = cpu.registers.hl;
         return 0;
     }
 
@@ -581,6 +593,22 @@ namespace sickboy {
         return 0;
     }
 
+    std::uint8_t add16_impl(CPU& cpu) {
+        auto instruction = cpu.memory->read(cpu.registers.pc);
+        std::uint8_t reg_code = (instruction & 0b00110000) >> 4;
+        std::uint16_t reg_value = *r16_lookup(cpu, reg_code);
+        std::uint16_t hl_value = cpu.registers.hl;
+        std::uint32_t new_value = static_cast<std::uint32_t>(hl_value) + reg_value;
+
+        cpu.registers.set_flag_n(false);
+        // Half carry for r16 add indicates overflow from 11th to 12th bit because
+        // 16 bit adds are really compromised of two 8 bit adds in the ALU.
+        cpu.registers.set_flag_h((hl_value & 0xFFF) + (reg_value & 0xFFF) > 0xFFF);
+        cpu.registers.set_flag_c(new_value > 0xFFFF);
+
+        return 0;
+    }
+
     std::uint8_t or_r8_impl(CPU& cpu) {
         auto instruction = cpu.memory->read(cpu.registers.pc);
         std::uint8_t reg_code = instruction & 0b111;
@@ -635,9 +663,12 @@ namespace sickboy {
     std::unordered_map<std::uint8_t, Instruction> CPU::instruction_set = {
         { 0x00, Instruction { .length = 1, .cycles = 4, .implementation = nop_impl } },                    // NOP
         { 0x01, Instruction { .length = 3, .cycles = 16, .implementation = load16_impl } },                // LD BC, IMM16
+        { 0x02, Instruction { .length = 1, .cycles = 8, .implementation = load16_impl } },                 // LD [BC], A
+        { 0x03, Instruction { .length = 1, .cycles = 8, .implementation = inc16_impl } },                  // INC BC
         { 0x04, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                   // INC B
         { 0x05, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                   // DEC B
         { 0x06, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },             // LD B, IMM8
+        { 0x09, Instruction { .length = 1, .cycles = 8, .implementation = add16_impl } },                  // ADD HL, BC
         { 0x0B, Instruction { .length = 1, .cycles = 8, .implementation = dec16_impl } },                  // DEC BC
         { 0x0C, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                   // INC C
         { 0x0D, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                   // DEC C
@@ -649,7 +680,10 @@ namespace sickboy {
         { 0x16, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },             // LD D, IMM8
         { 0x17, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_clear_zero_impl } }, // RLA
         { 0x18, Instruction { .length = 2, .cycles = 12, .implementation = jump_relative_impl } },         // JR IMM8
+        { 0x19, Instruction { .length = 1, .cycles = 8, .implementation = add16_impl } },                  // ADD HL, DE
         { 0x1A, Instruction { .length = 1, .cycles = 8, .implementation = load16_impl } },                 // LD A, [DE]
+        { 0x1B, Instruction { .length = 1, .cycles = 8, .implementation = dec16_impl } },                  // DEC DE
+        { 0x1C, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                   // INC E
         { 0x1D, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                   // DEC E
         { 0x1E, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },             // LD E, IMM8
         { 0x20, Instruction { .length = 2, .cycles = 8, .implementation = jump_relative_impl } },          // JR NZ, IMM8 (signed)
@@ -658,12 +692,18 @@ namespace sickboy {
         { 0x23, Instruction { .length = 1, .cycles = 8, .implementation = inc16_impl } },                  // INC HL
         { 0x24, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                   // INC H
         { 0x28, Instruction { .length = 2, .cycles = 8, .implementation = jump_relative_impl } },          // JR Z, IMM8
+        { 0x29, Instruction { .length = 1, .cycles = 8, .implementation = add16_impl } },                  // ADD HL, HL
         { 0x2A, Instruction { .length = 1, .cycles = 8, .implementation = load16_impl } },                 // LD A, [HL+]
+        { 0x2B, Instruction { .length = 1, .cycles = 8, .implementation = dec16_impl } },                  // DEC HL
         { 0x2E, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },             // LD L, IMM8
         { 0x2F, Instruction { .length = 1, .cycles = 4, .implementation = complement_impl } },             // CPL
         { 0x31, Instruction { .length = 3, .cycles = 16, .implementation = load16_impl } },                // LD SP, IMM16
         { 0x32, Instruction { .length = 1, .cycles = 16, .implementation = load16_impl } },                // LD SP, IMM16
+        { 0x33, Instruction { .length = 1, .cycles = 8, .implementation = inc16_impl } },                  // INC SP
         { 0x36, Instruction { .length = 2, .cycles = 12, .implementation = load8_imm8_impl } },            // LD [HL], IMM8
+        { 0x39, Instruction { .length = 1, .cycles = 8, .implementation = add16_impl } },                  // ADD HL, SP
+        { 0x3B, Instruction { .length = 1, .cycles = 8, .implementation = dec16_impl } },                  // DEC SP
+        { 0x3C, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                   // INC A
         { 0x3D, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                   // DEC A
         { 0x3E, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },             // LD A, IMM8
         { 0x47, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },               // LD B, A
@@ -720,6 +760,8 @@ namespace sickboy {
         { 0xF0, Instruction { .length = 2, .cycles = 12, .implementation = load8_high_impl } },            // LDH A, IMM8
         { 0xF3, Instruction { .length = 1, .cycles = 4, .implementation = disable_master_interrupt } },    // DI
         { 0xF7, Instruction { .length = 1, .cycles = 16, .implementation = restart_impl } },               // RST 30H
+        { 0xF9, Instruction { .length = 1, .cycles = 8, .implementation = load_sp_hl } },                  // LD SP, HL
+        { 0xFA, Instruction { .length = 3, .cycles = 16, .implementation = load16_imm16mem_impl } },       // LD A, [IMM16]
         { 0xFB, Instruction { .length = 1, .cycles = 4, .implementation = enable_master_interrupt } },     // EI
         { 0xFE, Instruction { .length = 2, .cycles = 8, .implementation = compare_impl } },                // CP A, IMM8
         { 0xFF, Instruction { .length = 1, .cycles = 16, .implementation = restart_impl } },               // RST 38H
