@@ -5,8 +5,13 @@ namespace sickboy {
     MMU::MMU() : ram({}), boot_rom({}), boot_rom_enabled(true) {}
 
     std::uint8_t MMU::read(std::uint16_t address) const {
+        // While boot ROM is enabled all reads between 0x00-0xFF go to the boot ROM
         if (boot_rom_enabled && address <= 0xFF) {
             return boot_rom[address];
+        }
+        // Echo RAM redirects all reads from 0xE000-0xFDFF to C000-DDFF
+        if (address >= 0xE000 && address <= 0xFDFF) {
+            return ram[address - 0x2000];
         }
         return ram[address];
     }

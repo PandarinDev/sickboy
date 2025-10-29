@@ -372,6 +372,10 @@ namespace sickboy {
             cpu.registers.pc = address;
             return 4;
         }
+        else if (jump_type == JumpType::HL) {
+            cpu.registers.pc = cpu.memory->read(cpu.registers.hl);
+            return 0;
+        }
         else throw std::runtime_error("Unimplemented jump type in jump_absolute_impl.");
     }
 
@@ -496,6 +500,9 @@ namespace sickboy {
         auto reg = r16stk_lookup(cpu, reg_code);
         *reg = pop_value(cpu) << 0;
         *reg |= pop_value(cpu) << 8;
+
+        // The only case when we are setting flags is when we are popping AF,
+        // because then of course we are restoring values to the F register.
 
         return 0;
     }
@@ -712,9 +719,14 @@ namespace sickboy {
         { 0x3C, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                   // INC A
         { 0x3D, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                   // DEC A
         { 0x3E, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },             // LD A, IMM8
+        { 0x46, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },               // LD B, [HL]
         { 0x47, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },               // LD B, A
         { 0x4F, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },               // LD C, A
+        { 0x56, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },               // LD D, [HL]
         { 0x57, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },               // LD D, A
+        { 0x5E, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },               // LD E, [HL]
+        { 0x5F, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },               // LD E, A
+        { 0x66, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },               // LD H, [HL]
         { 0x67, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },               // LD H, A
         { 0x77, Instruction { .length = 1, .cycles = 8, .implementation = load8_imm8_impl } },             // LD [HL], A
         { 0x78, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },               // LD A, B
@@ -726,13 +738,13 @@ namespace sickboy {
         { 0x7F, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },               // LD A, A
         { 0x86, Instruction { .length = 1, .cycles = 8, .implementation = add8_impl } },                   // ADD A, [HL]
         { 0x90, Instruction { .length = 1, .cycles = 4, .implementation = sub_impl } },                    // SUB A, B
-        { 0xA0, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                 // AND A, B
-        { 0xA1, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                 // AND A, C
-        { 0xA2, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                 // AND A, D
-        { 0xA3, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                 // AND A, E
-        { 0xA4, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                 // AND A, H
-        { 0xA5, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                 // AND A, L
-        { 0xA7, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                 // AND A, A
+        { 0xA0, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                    // AND A, B
+        { 0xA1, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                    // AND A, C
+        { 0xA2, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                    // AND A, D
+        { 0xA3, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                    // AND A, E
+        { 0xA4, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                    // AND A, H
+        { 0xA5, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                    // AND A, L
+        { 0xA7, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                    // AND A, A
         { 0xA8, Instruction { .length = 1, .cycles = 4, .implementation = xor_impl } },                    // XOR A, B
         { 0xA9, Instruction { .length = 1, .cycles = 4, .implementation = xor_impl } },                    // XOR A, C
         { 0xAA, Instruction { .length = 1, .cycles = 4, .implementation = xor_impl } },                    // XOR A, D
@@ -747,7 +759,7 @@ namespace sickboy {
         { 0xB4, Instruction { .length = 1, .cycles = 4, .implementation = or_r8_impl }},                   // OR H
         { 0xB5, Instruction { .length = 1, .cycles = 4, .implementation = or_r8_impl }},                   // OR L
         { 0xBE, Instruction { .length = 1, .cycles = 8, .implementation = compare_impl } },                // CP A, [HL]
-        { 0xC1, Instruction { .length = 1, .cycles = 12, .implementation = pop_impl} },                    // POP BC
+        { 0xC1, Instruction { .length = 1, .cycles = 12, .implementation = pop_impl } },                   // POP BC
         { 0xC3, Instruction { .length = 0, .cycles = 12, .implementation = jump_absolute_impl } },         // JP IMM16
         { 0xC5, Instruction { .length = 1, .cycles = 16, .implementation = push_impl } },                  // PUSH BC
         { 0xC7, Instruction { .length = 1, .cycles = 16, .implementation = restart_impl } },               // RST 00H
@@ -755,17 +767,23 @@ namespace sickboy {
         { 0xCB, Instruction { .length = 1, .cycles = 4, .implementation = enable_prefix } },               // PREFIX
         { 0xCD, Instruction { .length = 0, .cycles = 24, .implementation = call_impl } },                  // CALL IMM16
         { 0xCF, Instruction { .length = 1, .cycles = 16, .implementation = restart_impl } },               // RST 08H
+        { 0xD1, Instruction { .length = 1, .cycles = 12, .implementation = pop_impl } },                   // POP DE
+        { 0xD5, Instruction { .length = 1, .cycles = 16, .implementation = push_impl } },                  // PUSH DE
         { 0xD7, Instruction { .length = 1, .cycles = 16, .implementation = restart_impl } },               // RST 10H
         { 0xDF, Instruction { .length = 1, .cycles = 16, .implementation = restart_impl } },               // RST 18H
         { 0xE0, Instruction { .length = 2, .cycles = 12, .implementation = load8_high_impl } },            // LDH [IMM8], A
+        { 0xE1, Instruction { .length = 1, .cycles = 12, .implementation = pop_impl } },                   // POP HL
         { 0xE5, Instruction { .length = 1, .cycles = 16, .implementation = push_impl} },                   // PUSH HL
-        { 0xE6, Instruction { .length = 2, .cycles = 8, .implementation =  and_impl } },                // AND IMM8
+        { 0xE6, Instruction { .length = 2, .cycles = 8, .implementation =  and_impl } },                   // AND IMM8
         { 0xE7, Instruction { .length = 1, .cycles = 16, .implementation = restart_impl } },               // RST 20H
+        { 0xE9, Instruction { .length = 1, .cycles = 4, .implementation = jump_absolute_impl } },          // JP [HL]
         { 0xEA, Instruction { .length = 3, .cycles = 16, .implementation = load16_imm16mem_impl } },       // LD [IMM16], A
         { 0xE2, Instruction { .length = 1, .cycles = 8, .implementation = load8_high_impl } },             // LDH [C], A
         { 0xEF, Instruction { .length = 1, .cycles = 16, .implementation = restart_impl } },               // RST 28H
         { 0xF0, Instruction { .length = 2, .cycles = 12, .implementation = load8_high_impl } },            // LDH A, IMM8
+        { 0xF1, Instruction { .length = 1, .cycles = 12, .implementation = pop_impl} },                    // POP AF
         { 0xF3, Instruction { .length = 1, .cycles = 4, .implementation = disable_master_interrupt } },    // DI
+        { 0xF5, Instruction { .length = 1, .cycles = 16, .implementation = push_impl } },                  // PUSH AF
         { 0xF7, Instruction { .length = 1, .cycles = 16, .implementation = restart_impl } },               // RST 30H
         { 0xF9, Instruction { .length = 1, .cycles = 8, .implementation = load_sp_hl } },                  // LD SP, HL
         { 0xFA, Instruction { .length = 3, .cycles = 16, .implementation = load16_imm16mem_impl } },       // LD A, [IMM16]
