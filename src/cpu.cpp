@@ -294,11 +294,17 @@ namespace sickboy {
         return 0;
     }
 
-    std::uint8_t and_r8_impl(CPU& cpu) {
+    std::uint8_t and_impl(CPU& cpu) {
+        enum class AndType : std::uint8_t {
+            R8 = 0b10100,
+            IMM8 = 0b11100
+        };
         std::uint8_t instruction = cpu.memory->read(cpu.registers.pc);
-        std::uint8_t reg_code = instruction & 0b11;
-        std::uint8_t reg_value = r8_get_value(cpu, reg_code);
-        std::uint8_t result = cpu.registers.a() & reg_value;
+        auto and_type = static_cast<AndType>((instruction & 0b1111100) >> 2);
+        std::uint8_t value = (and_type == AndType::R8)
+            ? r8_get_value(cpu, instruction & 0b11)
+            : cpu.memory->read(cpu.registers.pc + 1);
+        std::uint8_t result = cpu.registers.a() & value;
 
         cpu.registers.set_flag_z(result == 0);
         cpu.registers.set_flag_n(false);
@@ -720,13 +726,13 @@ namespace sickboy {
         { 0x7F, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },               // LD A, A
         { 0x86, Instruction { .length = 1, .cycles = 8, .implementation = add8_impl } },                   // ADD A, [HL]
         { 0x90, Instruction { .length = 1, .cycles = 4, .implementation = sub_impl } },                    // SUB A, B
-        { 0xA0, Instruction { .length = 1, .cycles = 4, .implementation = and_r8_impl } },                 // AND A, B
-        { 0xA1, Instruction { .length = 1, .cycles = 4, .implementation = and_r8_impl } },                 // AND A, C
-        { 0xA2, Instruction { .length = 1, .cycles = 4, .implementation = and_r8_impl } },                 // AND A, D
-        { 0xA3, Instruction { .length = 1, .cycles = 4, .implementation = and_r8_impl } },                 // AND A, E
-        { 0xA4, Instruction { .length = 1, .cycles = 4, .implementation = and_r8_impl } },                 // AND A, H
-        { 0xA5, Instruction { .length = 1, .cycles = 4, .implementation = and_r8_impl } },                 // AND A, L
-        { 0xA7, Instruction { .length = 1, .cycles = 4, .implementation = and_r8_impl } },                 // AND A, A
+        { 0xA0, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                 // AND A, B
+        { 0xA1, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                 // AND A, C
+        { 0xA2, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                 // AND A, D
+        { 0xA3, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                 // AND A, E
+        { 0xA4, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                 // AND A, H
+        { 0xA5, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                 // AND A, L
+        { 0xA7, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                 // AND A, A
         { 0xA8, Instruction { .length = 1, .cycles = 4, .implementation = xor_impl } },                    // XOR A, B
         { 0xA9, Instruction { .length = 1, .cycles = 4, .implementation = xor_impl } },                    // XOR A, C
         { 0xAA, Instruction { .length = 1, .cycles = 4, .implementation = xor_impl } },                    // XOR A, D
@@ -752,7 +758,8 @@ namespace sickboy {
         { 0xD7, Instruction { .length = 1, .cycles = 16, .implementation = restart_impl } },               // RST 10H
         { 0xDF, Instruction { .length = 1, .cycles = 16, .implementation = restart_impl } },               // RST 18H
         { 0xE0, Instruction { .length = 2, .cycles = 12, .implementation = load8_high_impl } },            // LDH [IMM8], A
-        { 0xE6, Instruction { .length = 1, .cycles = 16, .implementation = push_impl} },                   // PUSH HL
+        { 0xE5, Instruction { .length = 1, .cycles = 16, .implementation = push_impl} },                   // PUSH HL
+        { 0xE6, Instruction { .length = 2, .cycles = 8, .implementation =  and_impl } },                // AND IMM8
         { 0xE7, Instruction { .length = 1, .cycles = 16, .implementation = restart_impl } },               // RST 20H
         { 0xEA, Instruction { .length = 3, .cycles = 16, .implementation = load16_imm16mem_impl } },       // LD [IMM16], A
         { 0xE2, Instruction { .length = 1, .cycles = 8, .implementation = load8_high_impl } },             // LDH [C], A
