@@ -373,7 +373,7 @@ namespace sickboy {
             return 4;
         }
         else if (jump_type == JumpType::HL) {
-            cpu.registers.pc = cpu.memory->read(cpu.registers.hl);
+            cpu.registers.pc = cpu.registers.hl;
             return 0;
         }
         else throw std::runtime_error("Unimplemented jump type in jump_absolute_impl.");
@@ -762,34 +762,34 @@ namespace sickboy {
         { 0xC1, Instruction { .length = 1, .cycles = 12, .implementation = pop_impl } },                   // POP BC
         { 0xC3, Instruction { .length = 0, .cycles = 12, .implementation = jump_absolute_impl } },         // JP IMM16
         { 0xC5, Instruction { .length = 1, .cycles = 16, .implementation = push_impl } },                  // PUSH BC
-        { 0xC7, Instruction { .length = 1, .cycles = 16, .implementation = restart_impl } },               // RST 00H
+        { 0xC7, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },               // RST 00H
         { 0xC9, Instruction { .length = 0, .cycles = 16, .implementation = ret_impl } },                   // RET
         { 0xCB, Instruction { .length = 1, .cycles = 4, .implementation = enable_prefix } },               // PREFIX
         { 0xCD, Instruction { .length = 0, .cycles = 24, .implementation = call_impl } },                  // CALL IMM16
-        { 0xCF, Instruction { .length = 1, .cycles = 16, .implementation = restart_impl } },               // RST 08H
+        { 0xCF, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },               // RST 08H
         { 0xD1, Instruction { .length = 1, .cycles = 12, .implementation = pop_impl } },                   // POP DE
         { 0xD5, Instruction { .length = 1, .cycles = 16, .implementation = push_impl } },                  // PUSH DE
-        { 0xD7, Instruction { .length = 1, .cycles = 16, .implementation = restart_impl } },               // RST 10H
-        { 0xDF, Instruction { .length = 1, .cycles = 16, .implementation = restart_impl } },               // RST 18H
+        { 0xD7, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },               // RST 10H
+        { 0xDF, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },               // RST 18H
         { 0xE0, Instruction { .length = 2, .cycles = 12, .implementation = load8_high_impl } },            // LDH [IMM8], A
         { 0xE1, Instruction { .length = 1, .cycles = 12, .implementation = pop_impl } },                   // POP HL
         { 0xE5, Instruction { .length = 1, .cycles = 16, .implementation = push_impl} },                   // PUSH HL
         { 0xE6, Instruction { .length = 2, .cycles = 8, .implementation =  and_impl } },                   // AND IMM8
-        { 0xE7, Instruction { .length = 1, .cycles = 16, .implementation = restart_impl } },               // RST 20H
-        { 0xE9, Instruction { .length = 1, .cycles = 4, .implementation = jump_absolute_impl } },          // JP [HL]
+        { 0xE7, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },               // RST 20H
+        { 0xE9, Instruction { .length = 1, .cycles = 4, .implementation = jump_absolute_impl } },          // JP HL
         { 0xEA, Instruction { .length = 3, .cycles = 16, .implementation = load16_imm16mem_impl } },       // LD [IMM16], A
         { 0xE2, Instruction { .length = 1, .cycles = 8, .implementation = load8_high_impl } },             // LDH [C], A
-        { 0xEF, Instruction { .length = 1, .cycles = 16, .implementation = restart_impl } },               // RST 28H
+        { 0xEF, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },               // RST 28H
         { 0xF0, Instruction { .length = 2, .cycles = 12, .implementation = load8_high_impl } },            // LDH A, IMM8
         { 0xF1, Instruction { .length = 1, .cycles = 12, .implementation = pop_impl} },                    // POP AF
         { 0xF3, Instruction { .length = 1, .cycles = 4, .implementation = disable_master_interrupt } },    // DI
         { 0xF5, Instruction { .length = 1, .cycles = 16, .implementation = push_impl } },                  // PUSH AF
-        { 0xF7, Instruction { .length = 1, .cycles = 16, .implementation = restart_impl } },               // RST 30H
+        { 0xF7, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },               // RST 30H
         { 0xF9, Instruction { .length = 1, .cycles = 8, .implementation = load_sp_hl } },                  // LD SP, HL
         { 0xFA, Instruction { .length = 3, .cycles = 16, .implementation = load16_imm16mem_impl } },       // LD A, [IMM16]
         { 0xFB, Instruction { .length = 1, .cycles = 4, .implementation = enable_master_interrupt } },     // EI
         { 0xFE, Instruction { .length = 2, .cycles = 8, .implementation = compare_impl } },                // CP A, IMM8
-        { 0xFF, Instruction { .length = 1, .cycles = 16, .implementation = restart_impl } },               // RST 38H
+        { 0xFF, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },               // RST 38H
     };
 
     std::uint8_t bit_impl(CPU& cpu) {
