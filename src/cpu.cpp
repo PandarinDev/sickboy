@@ -740,8 +740,9 @@ namespace sickboy {
         { 0x0C, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                   // INC C
         { 0x0D, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                   // DEC C
         { 0x0E, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },             // LD E, IMM8
-        { 0x0F, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_circular_impl } },           // RRCA
+        { 0x0F, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_circular_impl } },  // RRCA
         { 0x11, Instruction { .length = 3, .cycles = 16, .implementation = load16_impl } },                // LD DE, IMM16
+        { 0x12, Instruction { .length = 1, .cycles = 8, .implementation = load16_impl } },                 // LD [DE], A
         { 0x13, Instruction { .length = 1, .cycles = 8, .implementation = inc16_impl } },                  // INC DE
         { 0x15, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                   // DEC D
         { 0x16, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },             // LD D, IMM8
@@ -880,7 +881,7 @@ namespace sickboy {
 
     std::uint8_t swap_impl(CPU& cpu) {
         auto instruction = cpu.memory->read(cpu.registers.pc);
-        std::uint8_t register_code = instruction & 0b11;
+        std::uint8_t register_code = instruction & 0b111;
         std::uint8_t register_value = r8_get_value(cpu, register_code);
         std::uint8_t new_value = ((register_value & 0x0F) << 4) | ((register_value & 0xF0) >> 4);
         r8_set_value(cpu, register_code, new_value);
@@ -893,11 +894,23 @@ namespace sickboy {
         return 0;
     }
 
+    std::uint8_t reset_impl(CPU& cpu) {
+        auto instruction = cpu.memory->read(cpu.registers.pc);
+        std::uint8_t register_code = instruction & 0b111;
+        std::uint8_t register_value = r8_get_value(cpu, register_code);
+        std::uint8_t bit_index = (instruction & 0b00111000) >> 3;
+        std::uint8_t mask = 0b11111111 & (~(1 << bit_index));
+        std::uint8_t new_value = register_value & mask;
+        r8_set_value(cpu, register_code, new_value);
+        return 0;
+    }
+
     // Instruction length and cycles here do NOT contain the length and cycle count of the prefix instruction itself.
     std::unordered_map<std::uint8_t, Instruction> CPU::prefixed_instruction_set = {
         { 0x11, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_set_zero_impl } }, // RL C
         { 0x37, Instruction { .length = 1, .cycles = 4, .implementation = swap_impl } },                 // SWAP A
         { 0x7C, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                  // BIT 7, H
+        { 0x87, Instruction { .length = 1, .cycles = 4, .implementation = reset_impl } },                // RES 0, A
     };
 
 }
