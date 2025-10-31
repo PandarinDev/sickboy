@@ -686,7 +686,7 @@ namespace sickboy {
         std::uint8_t target_code = (instruction & 0b00111000) >> 3;
         std::uint8_t target_address = target_code * 8;
 
-        push_value(cpu, cpu.registers.pc);
+        push_value(cpu, cpu.registers.pc + 1);
         cpu.registers.pc = target_address;
 
         return 0;
