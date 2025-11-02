@@ -386,7 +386,10 @@ namespace sickboy {
             std::uint16_t address =
                 (cpu.memory->read(cpu.registers.pc + 2) << 8) |
                 (cpu.memory->read(cpu.registers.pc + 1) << 0);
-            cpu.registers.pc = address;
+            // Unconditional jumps need to subtract the jump instruction length from target address
+            // because the length of the instruction in the instruction table cannot be 0, since if
+            // the jump condition is false we need to progress PC.
+            cpu.registers.pc = address - 3;
             return 4;
         }
         else if (jump_type == JumpType::HL) {
@@ -830,7 +833,7 @@ namespace sickboy {
         { 0xC7, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },               // RST 00H
         { 0xC8, Instruction { .length = 0, .cycles = 8, .implementation = ret_impl } },                    // RET Z
         { 0xC9, Instruction { .length = 0, .cycles = 16, .implementation = ret_impl } },                   // RET
-        { 0xCA, Instruction { .length = 0, .cycles = 12, .implementation = jump_absolute_impl } },         // JP Z, IMM16
+        { 0xCA, Instruction { .length = 3, .cycles = 12, .implementation = jump_absolute_impl } },         // JP Z, IMM16
         { 0xCB, Instruction { .length = 1, .cycles = 4, .implementation = enable_prefix } },               // PREFIX
         { 0xCD, Instruction { .length = 0, .cycles = 24, .implementation = call_impl } },                  // CALL IMM16
         { 0xCF, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },               // RST 08H
