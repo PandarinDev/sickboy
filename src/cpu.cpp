@@ -429,17 +429,17 @@ namespace sickboy {
             std::uint16_t address =
                 (cpu.memory->read(cpu.registers.pc + 2) << 8) |
                 (cpu.memory->read(cpu.registers.pc + 1) << 0);
-            cpu.registers.pc = address;
+            // Unconditional jumps need to subtract the jump instruction length from target address
+            // because the length of the instruction in the instruction table cannot be 0, since if
+            // the jump condition is false we need to progress PC.
+            cpu.registers.pc = address - 3;
             return 4;
         }
         else if (jump_type == JumpType::UNCONDITIONAL) {
             std::uint16_t address =
                 (cpu.memory->read(cpu.registers.pc + 2) << 8) |
                 (cpu.memory->read(cpu.registers.pc + 1) << 0);
-            // Unconditional jumps need to subtract the jump instruction length from target address
-            // because the length of the instruction in the instruction table cannot be 0, since if
-            // the jump condition is false we need to progress PC.
-            cpu.registers.pc = address - 3;
+            cpu.registers.pc = address;
             return 4;
         }
         else if (jump_type == JumpType::HL) {
