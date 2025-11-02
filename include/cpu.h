@@ -92,6 +92,8 @@ namespace sickboy {
         Registers registers;
         std::shared_ptr<MMU> memory;
         bool is_prefixed;
+        // Used to temporarily store IE when calling an interrupt routine
+        std::uint8_t before_interrupt_ie;
 
         CPU(const std::shared_ptr<MMU>& memory);
 

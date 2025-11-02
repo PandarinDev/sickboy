@@ -54,7 +54,26 @@ namespace sickboy {
         return f() & 0b00010000;
     }
 
-    CPU::CPU(const std::shared_ptr<MMU>& memory) : registers({}), memory(memory), is_prefixed(false) {}
+    CPU::CPU(const std::shared_ptr<MMU>& memory) :
+        registers({}), memory(memory), is_prefixed(false), before_interrupt_ie(0) {}
+
+    std::uint8_t interrupt_jump_vector_lookup(std::uint8_t bit) {
+        switch (bit) {
+            case 0: return 0x40;
+            case 1: return 0x48;
+            case 2: return 0x50;
+            case 3: return 0x58;
+            case 4: return 0x60;
+            default: throw std::runtime_error("Unknown bit in interrupt jump vector lookup.");
+        }
+    }
+
+    void push_value(CPU& cpu, std::uint16_t value) {
+        std::uint8_t high_bits = (value & (0xFF << 8)) >> 8;
+        std::uint8_t low_bits = value & 0xFF;
+        cpu.memory->write(--cpu.registers.sp, high_bits);
+        cpu.memory->write(--cpu.registers.sp, low_bits);
+    }
 
     std::uint8_t CPU::tick() {
         auto lookup_instruction = [](std::uint8_t instruction_code) -> const Instruction& {
@@ -71,6 +90,37 @@ namespace sickboy {
             }
             return instruction_it->second;
         };
+
+        // Check if we need to call any interrupt routines
+        if (registers.ime) {
+            static constexpr std::uint8_t INTERRUPT_HANDLING_CYCLES = 20;
+            static constexpr std::uint16_t IF_ADDRESS = 0xFF0F;
+            static constexpr std::uint16_t IE_ADDRESS = 0xFFFF;
+            std::uint8_t interrupt_requested = memory->read(IF_ADDRESS);
+            std::uint8_t interrupt_enabled = memory->read(IE_ADDRESS);
+            // If there is at least one common bit in IF and IE we need to call an interrupt handler
+            // Priority of interrupts is from lowest bit to highest, so VBlank is top priority.
+            if ((interrupt_requested & interrupt_enabled) != 0) {
+                static constexpr std::uint8_t num_interrupt_bits = 5;
+                for (std::uint8_t i = 0; i < num_interrupt_bits; ++i) {
+                    bool should_call = ((interrupt_requested & (1 << i)) & (interrupt_enabled & (1 << i))) != 0;
+                    if (should_call) {
+                        // Clear IE for the duration of the interrupt routine
+                        before_interrupt_ie = interrupt_enabled;
+                        memory->write(IE_ADDRESS, 0x00);
+                        // Clear interrupt bit in IF
+                        std::uint8_t updated_if = interrupt_requested & ~(1 << i);
+                        memory->write(IF_ADDRESS, updated_if);
+                        // Call interrupt routine
+                        std::uint8_t new_address = interrupt_jump_vector_lookup(i);
+                        push_value(*this, registers.pc);
+                        registers.pc = new_address;
+
+                        return INTERRUPT_HANDLING_CYCLES;
+                    }
+                }
+            }
+        }
 
         // Fetch instruction
         auto was_prefixed = is_prefixed;
@@ -423,13 +473,6 @@ namespace sickboy {
         return 0;
     }
 
-    void push_value(CPU& cpu, std::uint16_t value) {
-        std::uint8_t high_bits = (value & (0xFF << 8)) >> 8;
-        std::uint8_t low_bits = value & 0xFF;
-        cpu.memory->write(--cpu.registers.sp, high_bits);
-        cpu.memory->write(--cpu.registers.sp, low_bits);
-    }
-
     std::uint8_t call_impl(CPU& cpu) {
         enum class CallType : std::uint8_t {
             UNCONDITIONAL = 0b101,
@@ -714,6 +757,8 @@ namespace sickboy {
     }
 
     std::uint8_t enable_master_interrupt(CPU& cpu) {
+        // TODO: This is incorrect! IME becomes set one instruction !after! IE
+        // This is known to cause issues and should be fixed soon.
         cpu.registers.set_ime(true);
         return 0;
     }
@@ -721,6 +766,13 @@ namespace sickboy {
     std::uint8_t disable_master_interrupt(CPU& cpu) {
         cpu.registers.set_ime(false);
         return 0;   
+    }
+
+    std::uint8_t ret_interrupt_impl(CPU& cpu) {
+        // Same as return but we also need to reset IE to the same value
+        // as it was before the interrupt routine getting called by the CPU
+        cpu.memory->write(0xFFFF, cpu.before_interrupt_ie);
+        return ret_impl(cpu);
     }
 
     std::uint8_t nop_impl(CPU&) {
@@ -739,6 +791,7 @@ namespace sickboy {
         { 0x06, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },             // LD B, IMM8
         { 0x08, Instruction { .length = 3, .cycles = 20, .implementation = load16_impl } },                // LD [IMM16], SP
         { 0x09, Instruction { .length = 1, .cycles = 8, .implementation = add16_impl } },                  // ADD HL, BC
+        { 0x0A, Instruction { .length = 1, .cycles = 8, .implementation = load16_impl } },                 // LD A, [BC]
         { 0x0B, Instruction { .length = 1, .cycles = 8, .implementation = dec16_impl } },                  // DEC BC
         { 0x0C, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                   // INC C
         { 0x0D, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                   // DEC C
@@ -840,6 +893,7 @@ namespace sickboy {
         { 0xD1, Instruction { .length = 1, .cycles = 12, .implementation = pop_impl } },                   // POP DE
         { 0xD5, Instruction { .length = 1, .cycles = 16, .implementation = push_impl } },                  // PUSH DE
         { 0xD7, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },               // RST 10H
+        { 0xD9, Instruction { .length = 1, .cycles = 16, .implementation = ret_interrupt_impl } },         // RETI
         { 0xDF, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },               // RST 18H
         { 0xE0, Instruction { .length = 2, .cycles = 12, .implementation = load8_high_impl } },            // LDH [IMM8], A
         { 0xE1, Instruction { .length = 1, .cycles = 12, .implementation = pop_impl } },                   // POP HL
