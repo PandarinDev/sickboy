@@ -71,8 +71,9 @@ namespace sickboy {
             current_mode_dots = 0;
             // Set/clear VBlank in interrupt flag
             static constexpr std::uint16_t IF_ADDRESS = 0xFF0F;
-            auto previous_if = memory->read(IF_ADDRESS);
-            memory->write(IF_ADDRESS, previous_if & ~((mode == PPUMode::VERTICAL_BLANK) ? 1 : 0));
+            std::uint8_t previous_if = memory->read(IF_ADDRESS);
+            std::uint8_t new_if = (previous_if & 0b11111110) | ((mode == PPUMode::VERTICAL_BLANK) ? 1 : 0);
+            memory->write(IF_ADDRESS, new_if);
 
             // When we are switching to VBlank mode signal that a new frame needs to be rendered
             if (mode == PPUMode::VERTICAL_BLANK) {
