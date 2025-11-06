@@ -55,7 +55,7 @@ namespace sickboy {
     }
 
     CPU::CPU(const std::shared_ptr<MMU>& memory) :
-        registers({}), memory(memory), is_prefixed(false), before_interrupt_ie(0) {}
+        registers({}), memory(memory), is_prefixed(false) {}
 
     std::uint8_t interrupt_jump_vector_lookup(std::uint8_t bit) {
         switch (bit) {
@@ -105,9 +105,8 @@ namespace sickboy {
                 for (std::uint8_t i = 0; i < num_interrupt_bits; ++i) {
                     bool should_call = ((interrupt_requested & (1 << i)) & (interrupt_enabled & (1 << i))) != 0;
                     if (should_call) {
-                        // Clear IE for the duration of the interrupt routine
-                        before_interrupt_ie = interrupt_enabled;
-                        memory->write(IE_ADDRESS, 0x00);
+                        // Clear IME to prevent further interrupts until it is re-enabled
+                        registers.set_ime(false);
                         // Clear interrupt bit in IF
                         std::uint8_t updated_if = interrupt_requested & ~(1 << i);
                         memory->write(IF_ADDRESS, updated_if);
@@ -198,8 +197,20 @@ namespace sickboy {
         enum class LoadType : std::uint8_t {
             R16_IMM16 = 0b0001,
             R16MEM_A = 0b0010,
-            A_R16_MEM = 0b1010,
+            A_R16MEM = 0b1010,
             IMM16MEM_SP = 0b1000
+        };
+
+        static const auto execute_reg_operation = [](CPU& cpu, RegisterOperation reg_op) {
+            if (reg_op == RegisterOperation::HL_INCREMENT) {
+                cpu.registers.hl++;
+            }
+            else if (reg_op == RegisterOperation::HL_DECREMENT) {
+                cpu.registers.hl--;
+            }
+            else if (reg_op != RegisterOperation::NONE) {
+                throw std::runtime_error("Unknown register operation in load16_impl.");
+            }
         };
 
         auto instruction = cpu.memory->read(cpu.registers.pc);
@@ -217,22 +228,14 @@ namespace sickboy {
             std::uint8_t reg_code = (instruction & 0b00110000) >> 4;
             auto [reg_value, reg_op] = r16mem_lookup(cpu, reg_code);
             cpu.memory->write(reg_value, cpu.registers.a());
-            // Check if we need to execute a register operation
-            if (reg_op == RegisterOperation::HL_INCREMENT) {
-                cpu.registers.hl++;
-            }
-            else if (reg_op == RegisterOperation::HL_DECREMENT) {
-                cpu.registers.hl--;
-            }
-            else if (reg_op != RegisterOperation::NONE) {
-                throw std::runtime_error("Unknown register operation in load16_impl.");
-            }
+            execute_reg_operation(cpu, reg_op);
         }
-        else if (load_type == LoadType::A_R16_MEM) {
+        else if (load_type == LoadType::A_R16MEM) {
             std::uint8_t reg_code = (instruction & 0b00110000) >> 4;
-            std::uint16_t* reg = r16_lookup(cpu, reg_code);
-            auto value = cpu.memory->read(*reg);
+            auto [reg_value, reg_op] = r16mem_lookup(cpu, reg_code);
+            auto value = cpu.memory->read(reg_value);
             cpu.registers.a() = value;
+            execute_reg_operation(cpu, reg_op);
         }
         else if (load_type == LoadType::IMM16MEM_SP) {
             std::uint16_t address = 
@@ -870,11 +873,17 @@ namespace sickboy {
     }
 
     std::uint8_t ret_interrupt_impl(CPU& cpu) {
-        // Same as return but we also need to reset IE to the same value
-        // as it was before the interrupt routine getting called by the CPU
-        cpu.memory->write(0xFFFF, cpu.before_interrupt_ie);
+        // Same as return but we also need to re-enable IME
+        cpu.registers.set_ime(true);
         cpu.registers.pc = pop_value(cpu);
         cpu.registers.pc |= pop_value(cpu) << 8;
+        return 0;
+    }
+
+    std::uint8_t set_carry_flag_impl(CPU& cpu) {
+        cpu.registers.set_flag_n(false);
+        cpu.registers.set_flag_h(false);
+        cpu.registers.set_flag_c(true);
         return 0;
     }
 
@@ -931,8 +940,10 @@ namespace sickboy {
         { 0x31, Instruction { .length = 3, .cycles = 16, .implementation = load16_impl } },                         // LD SP, IMM16
         { 0x32, Instruction { .length = 1, .cycles = 16, .implementation = load16_impl } },                         // LD SP, IMM16
         { 0x33, Instruction { .length = 1, .cycles = 8, .implementation = inc16_impl } },                           // INC SP
+        { 0x34, Instruction { .length = 1, .cycles = 12, .implementation = inc8_impl } },                           // INC [HL]
         { 0x35, Instruction { .length = 1, .cycles = 12, .implementation = dec8_impl } },                           // DEC [HL]
         { 0x36, Instruction { .length = 2, .cycles = 12, .implementation = load8_imm8_impl } },                     // LD [HL], IMM8
+        { 0x37, Instruction { .length = 1, .cycles = 4, .implementation = set_carry_flag_impl } },                  // SCF
         { 0x38, Instruction { .length = 2, .cycles = 8, .implementation = jump_relative_impl } },                   // JR C, r8
         { 0x39, Instruction { .length = 1, .cycles = 8, .implementation = add16_impl } },                           // ADD HL, SP
         { 0x3B, Instruction { .length = 1, .cycles = 8, .implementation = dec16_impl } },                           // DEC SP
