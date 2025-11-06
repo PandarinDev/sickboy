@@ -358,11 +358,12 @@ namespace sickboy {
             IMM8 = 0b11100
         };
         std::uint8_t instruction = cpu.memory->read(cpu.registers.pc);
-        auto and_type = static_cast<AndType>((instruction & 0b1111100) >> 2);
+        auto and_type = static_cast<AndType>((instruction & 0b11111000) >> 3);
         std::uint8_t value = (and_type == AndType::R8)
-            ? r8_get_value(cpu, instruction & 0b11)
+            ? r8_get_value(cpu, instruction & 0b111)
             : cpu.memory->read(cpu.registers.pc + 1);
         std::uint8_t result = cpu.registers.a() & value;
+        cpu.registers.a() = result;
 
         cpu.registers.set_flag_z(result == 0);
         cpu.registers.set_flag_n(false);
