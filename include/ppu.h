@@ -9,11 +9,13 @@
 
 namespace sickboy {
 
-    enum class PPUMode {
-        VERTICAL_BLANK,
-        OAM_SCAN,
-        DRAWING,
-        HORIZONTAL_BLANK
+    // The value for these modes is actually important as it is written
+    // to the LCD status register upon every mode change that happens.
+    enum class PPUMode : std::uint8_t {
+        HORIZONTAL_BLANK = 0,
+        VERTICAL_BLANK = 1,
+        OAM_SCAN = 2,
+        DRAWING = 3
     };
 
     struct PPU {

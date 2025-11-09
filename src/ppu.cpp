@@ -43,7 +43,6 @@ namespace sickboy {
 
     bool PPU::tick() {
         // TODO: Implement VRAM locking while certain modes are active
-
         ++current_mode_dots;
         auto max_mode_length = get_max_mode_dot_length(mode);
         // Horizontal blank length is shortened if draw mode took up more than minimum time
@@ -69,11 +68,22 @@ namespace sickboy {
             }
             mode = get_next_mode(mode, current_scanline);
             current_mode_dots = 0;
+            // Write mode to status register
+            static constexpr std::uint16_t LCD_STATUS_ADDRESS = 0xFF41;
+            static constexpr std::uint16_t IF_ADDRESS = 0xFF0F;
+            std::uint8_t lcd_status = memory->read(LCD_STATUS_ADDRESS);
+            std::uint8_t mode_value = static_cast<std::uint8_t>(mode);
+            memory->write(LCD_STATUS_ADDRESS, (lcd_status & ~0b11) | mode_value);
+            // Check if mode select is requested and trigger STAT interrupt if mode matches
+            if (((lcd_status & 0b00001000) != 0 && mode_value == 0) ||
+                ((lcd_status & 0b00010000) != 0 && mode_value == 1) ||
+                ((lcd_status & 0b00100000) != 0 && mode_value == 2)) {
+                memory->write(IF_ADDRESS, memory->read(IF_ADDRESS) | 0b10);
+            }
 
             // When we are switching to VBlank mode signal that a new frame needs to be rendered
             if (mode == PPUMode::VERTICAL_BLANK) {
-                // Set VBlank in interrupt flag
-                static constexpr std::uint16_t IF_ADDRESS = 0xFF0F;
+                // Set VBlank in interrupt request flag
                 memory->write(IF_ADDRESS, memory->read(IF_ADDRESS) | 0b1);
                 return true;
             }
@@ -86,6 +96,22 @@ namespace sickboy {
         current_scanline = (current_scanline + 1) % MAX_SCANLINES;
         static constexpr std::uint16_t LCD_Y_COORD_ADDRESS = 0xFF44;
         memory->write(LCD_Y_COORD_ADDRESS, current_scanline);
+
+        static constexpr std::uint16_t LY_COMPARE_ADDRESS = 0xFF45;
+        static constexpr std::uint16_t LCD_STATUS_ADDRESS = 0xFF41;
+        std::uint8_t ly_compare = memory->read(LY_COMPARE_ADDRESS);
+        std::uint8_t lcd_status = memory->read(LCD_STATUS_ADDRESS);
+        std::uint8_t final_status = lcd_status;
+        bool lyc_equals = current_scanline == ly_compare;
+        // Set LYC == LY on every scanline increment
+        final_status = (final_status & ~0b100) |
+            (lyc_equals ? 0b100 : 0b000);
+        // If LYC compare is enabled request STAT interrupt if LYC == LY
+        if (lyc_equals && (lcd_status & 0b01000000) != 0) {
+            static constexpr std::uint16_t IF_ADDRESS = 0xFF0F;
+            memory->write(IF_ADDRESS, memory->read(IF_ADDRESS) | 0b10);
+        }
+        memory->write(LCD_STATUS_ADDRESS, final_status);
     }
 
     std::uint8_t get_tile_color_index(std::uint16_t row_colors, std::uint8_t pixel) {
