@@ -22,10 +22,18 @@ namespace sickboy {
 
     private:
 
+        enum class BankingMode : std::uint8_t {
+            SIMPLE = 0,
+            ADVANCED = 1
+        };
+
         std::array<std::uint8_t, 0xFFFF + 1> ram;
         std::array<std::uint8_t, 0x00FF + 1> boot_rom;
         bool boot_rom_enabled;
         bool had_interrupt_request;
+        std::uint8_t bank_lower;
+        std::uint8_t bank_upper;
+        BankingMode bank_mode;
 
     };
 

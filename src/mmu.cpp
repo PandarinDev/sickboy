@@ -2,10 +2,14 @@
 
 namespace sickboy {
 
-    MMU::MMU() : ram({}), boot_rom({}), boot_rom_enabled(true), had_interrupt_request(false) {}
+    MMU::MMU() :
+        ram({}), boot_rom({}), boot_rom_enabled(true), had_interrupt_request(false),
+        bank_lower(1), bank_upper(0), bank_mode(BankingMode::SIMPLE) {}
 
     std::uint8_t MMU::read(std::uint16_t address) const {
         static constexpr std::uint16_t JOYPAD_ADDRESS = 0xFF00;
+
+        // TODO: Add address translation based on bank mode and bank value ((higher << 5) | lower).
 
         // While boot ROM is enabled all reads between 0x00-0xFF go to the boot ROM
         if (boot_rom_enabled && address <= 0xFF) {
@@ -27,6 +31,25 @@ namespace sickboy {
         static constexpr std::uint16_t BOOT_ROM_DISABLE_ADDRESS = 0xFF50;
         static constexpr std::uint16_t OAM_DMA_COPY_ADDRESS = 0xFF46;
         static constexpr std::uint16_t INTERRUPT_REQUEST_ADDRESS = 0xFF0F;
+
+        // Handle ROM bank registers
+        if (address >= 0x2000 && address < 0x4000) {
+            // TODO: Bank masking should depend on the number of banks the cartridge has
+            // E.g. a 256kB cartridge should use only a 4 bit bank mask, not a 5 bit one.
+            std::uint8_t bank_value = value & 0b00011111;
+            // Treat bank#0 as bank#1
+            if (bank_value == 0) bank_value = 1;
+            bank_lower = bank_value;
+            return;
+        }
+        else if (address >= 4000 && address < 6000) {
+            bank_upper = value & 0b11;
+            return;
+        }
+        else if (address >= 6000 && address < 8000) {
+            bank_mode = static_cast<BankingMode>(value & 0b1);
+            return;
+        }
 
         ram[address] = value;
         // Handle writes that disable the boot ROM

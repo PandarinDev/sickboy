@@ -216,8 +216,9 @@ namespace sickboy {
                     continue;
                 }
                 auto color = color_index_to_grayscale_value(color_palette, pixel_color_index);
-                // TODO: Double check if the offset logic is correct
-                frame.at((y + y_offset) * 256 + x + x_offset) = color;
+                std::uint8_t final_x = x + x_offset;
+                std::uint8_t final_y = y + y_offset;
+                frame.at(final_y * 256 + final_x) = color;
             }
         }
     }
