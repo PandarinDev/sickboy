@@ -6,7 +6,7 @@
 namespace sickboy {
 
     System::System(const std::filesystem::path& cartridge_path) :
-        memory(std::make_shared<MMU>()), cpu(memory), ppu(memory) {
+        memory(std::make_shared<MMU>()), cpu(memory), ppu(memory), stopped(false) {
         // Load boot ROM contents
         {
             auto rom_contents = FileUtils::read_binary("assets/dmg_boot.bin");
@@ -30,10 +30,22 @@ namespace sickboy {
     }
 
     bool System::tick() {
+        // If the system is currently stopped (by a previous STOP instruction) we need to only poll inputs
+        // If any of the buttons are pressed we need to resume the system exactly where we left off
+        if (stopped) {
+            // TODO: Add input handling and waking up on input
+            return false;
+        }
         // First tick the CPU then catch up the PPU by giving it an equivalent amount of cycles (dots)
         // This is of course not entirely accurate since these subsystems are meant to run asynchronously
         // so in an accurate emulation the PPU might read something from the CPU in-between instructions.
         auto used_cycles = cpu.tick();
+        // Check if a stop was requested
+        if (cpu.stop_requested) {
+            stopped = true;
+            cpu.stop_requested = false;
+            return false;
+        }
         if (!ppu.is_lcd_and_ppu_enabled()) {
             return false;
         }

@@ -18,12 +18,14 @@ namespace sickboy {
 
         void copy_to_boot_rom(const std::uint8_t* data);
         void set_boot_rom_enabled(bool on);
+        bool poll_interrupt_request();
 
     private:
 
         std::array<std::uint8_t, 0xFFFF + 1> ram;
         std::array<std::uint8_t, 0x00FF + 1> boot_rom;
         bool boot_rom_enabled;
+        bool had_interrupt_request;
 
     };
 

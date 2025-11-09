@@ -2,7 +2,7 @@
 
 namespace sickboy {
 
-    MMU::MMU() : ram({}), boot_rom({}), boot_rom_enabled(true) {}
+    MMU::MMU() : ram({}), boot_rom({}), boot_rom_enabled(true), had_interrupt_request(false) {}
 
     std::uint8_t MMU::read(std::uint16_t address) const {
         static constexpr std::uint16_t JOYPAD_ADDRESS = 0xFF00;
@@ -26,6 +26,7 @@ namespace sickboy {
     void MMU::write(std::uint16_t address, std::uint8_t value) {
         static constexpr std::uint16_t BOOT_ROM_DISABLE_ADDRESS = 0xFF50;
         static constexpr std::uint16_t OAM_DMA_COPY_ADDRESS = 0xFF46;
+        static constexpr std::uint16_t INTERRUPT_REQUEST_ADDRESS = 0xFF0F;
 
         ram[address] = value;
         // Handle writes that disable the boot ROM
@@ -40,6 +41,9 @@ namespace sickboy {
             std::uint16_t source = value << 8;
             static constexpr std::uint16_t OAM_MEMORY = 0xFE00;
             copy_to(OAM_MEMORY, ram.data() + source, 160);
+        }
+        else if (address == INTERRUPT_REQUEST_ADDRESS) {
+            had_interrupt_request = true;
         }
     }
 
@@ -59,4 +63,10 @@ namespace sickboy {
         boot_rom_enabled = on;
     }
     
+    bool MMU::poll_interrupt_request() {
+        const auto result = had_interrupt_request;
+        had_interrupt_request = false;
+        return result;
+    }
+
 }

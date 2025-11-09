@@ -23,6 +23,10 @@ namespace sickboy {
         // Returns true if a new frame should be rendered
         bool tick();
 
+    private:
+
+        bool stopped;
+
     };
 
 }
