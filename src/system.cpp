@@ -47,6 +47,10 @@ namespace sickboy {
             return false;
         }
         if (!ppu.is_lcd_and_ppu_enabled()) {
+            // Clear PPU mode in LCD status register when PPU is disabled
+            static constexpr std::uint16_t LCD_STATUS_ADDRESS = 0xFF41;
+            std::uint8_t lcd_status = memory->read(LCD_STATUS_ADDRESS);
+            memory->write(LCD_STATUS_ADDRESS, lcd_status & ~0b11);
             return false;
         }
         auto should_render_new_frame = false;
