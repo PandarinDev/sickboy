@@ -136,35 +136,57 @@ namespace sickboy {
     }
 
     PPU::CroppedFrame PPU::compute_frame() const {
+        // TODO: The current frame logic needs to be completely dropped/reworked.
+        // Basically full frame/cropped frame distinction needs to go and we only ever want to
+        // render to what is currently called a cropped frame (160x144). This means that we want
+        // to apply the background scroll logic right at rendering, as well as introduce bounds
+        // checking for all of our object renderings and NOT draw any pixels outside of the frame
+        // instead of the current "always draw the full 8x8" tile logic.
         PPU::FullFrame frame{};
 
         // TODO: We are currently ignoring some of LCD control data (such as OBJ size)
         static constexpr std::uint16_t LCD_CONTROL_BYTE_ADDRESS = 0xFF40;
-        static constexpr std::uint16_t BACKGROUND_TILEMAP_START_ADDRESS = 0x9800;
         static constexpr std::uint16_t NUM_BACKGROUND_TILES = 32 * 32;
         static constexpr std::uint16_t COLOR_PALETTE_ADDR = 0xFF47;
         std::uint8_t control_byte = memory->read(LCD_CONTROL_BYTE_ADDRESS);
-        // TODO: This is incorrect for unsigned tile addressing
-        std::uint16_t bg_window_tile_start_addr = ((control_byte & 0b00010000) != 0)
+        std::uint16_t tile_map_area = ((control_byte & 0b00001000) != 0)
+            ? 0x9C00
+            : 0x9800;
+        
+        enum class TileAddressingMode : std::uint8_t {
+            SIGNED = 0,
+            UNSIGNED = 1
+        };
+        auto addressing_mode = static_cast<TileAddressingMode>((control_byte & 0b00010000) >> 4);
+        std::uint16_t bg_window_tile_start_addr = (addressing_mode == TileAddressingMode::UNSIGNED)
             ? 0x8000
             : 0x8800;
 
-        // Draw background
         std::uint8_t color_palette = memory->read(COLOR_PALETTE_ADDR);
-        for (std::uint16_t i = 0; i < NUM_BACKGROUND_TILES; ++i) {
-            std::uint8_t tile_idx = memory->read(BACKGROUND_TILEMAP_START_ADDRESS + i);
-            static constexpr auto tile_entry_size = sizeof(TileEntry::value_type) * std::tuple_size_v<TileEntry>;
-            TileEntry tile_entry;
-            memory->copy_from(bg_window_tile_start_addr + tile_idx * tile_entry_size, reinterpret_cast<std::uint8_t*>(&tile_entry), tile_entry_size);
-            std::uint8_t x_offset = (i % 32) * 8;
-            std::uint8_t y_offset = static_cast<std::uint8_t>((i / 32) * 8);
-            draw_tile(tile_entry, x_offset, y_offset, color_palette, false, frame);
+        // Draw background
+        bool is_background_and_window_enabled = (control_byte & 0b1) != 0;
+        if (is_background_and_window_enabled) {
+            for (std::uint16_t i = 0; i < NUM_BACKGROUND_TILES; ++i) {
+                static constexpr auto tile_entry_size = sizeof(TileEntry::value_type) * std::tuple_size_v<TileEntry>;
+                TileEntry tile_entry;
+                if (addressing_mode == TileAddressingMode::UNSIGNED) {
+                    std::uint8_t tile_idx = memory->read(tile_map_area + i);
+                    memory->copy_from(bg_window_tile_start_addr + tile_idx * tile_entry_size, reinterpret_cast<std::uint8_t*>(&tile_entry), tile_entry_size);
+                }
+                else {
+                    std::int8_t tile_idx = static_cast<std::int8_t>(memory->read(tile_map_area + i));
+                    memory->copy_from(bg_window_tile_start_addr + tile_idx * tile_entry_size, reinterpret_cast<std::uint8_t*>(&tile_entry), tile_entry_size);
+                }
+                std::uint8_t x_offset = (i % 32) * 8;
+                std::uint8_t y_offset = static_cast<std::uint8_t>((i / 32) * 8);
+                draw_tile(tile_entry, x_offset, y_offset, color_palette, false, frame);
+            }
         }
 
         // TODO: Draw window
 
         // Draw objects if object rendering is enabled
-        bool is_obj_rendering_enabled = control_byte & 0b00000010;
+        bool is_obj_rendering_enabled = (control_byte & 0b00000010) != 0;
         if (is_obj_rendering_enabled) {
             draw_objects(color_palette, frame);
         }

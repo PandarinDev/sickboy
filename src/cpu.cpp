@@ -1216,6 +1216,7 @@ namespace sickboy {
         { 0xC9, Instruction { .length = 0, .cycles = 16, .implementation = ret_impl } },                            // RET
         { 0xCA, Instruction { .length = 3, .cycles = 12, .implementation = jump_absolute_impl } },                  // JP Z, IMM16
         { 0xCB, Instruction { .length = 1, .cycles = 4, .implementation = enable_prefix } },                        // PREFIX
+        { 0xCC, Instruction { .length = 3, .cycles = 12, .implementation = call_impl } },                           // CALL Z, IMM16
         { 0xCD, Instruction { .length = 0, .cycles = 24, .implementation = call_impl } },                           // CALL IMM16
         { 0xCE, Instruction { .length = 2, .cycles = 8, .implementation = add8_carry_impl } },                      // ADC A, IMM8
         { 0xCF, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },                        // RST 08H
@@ -1355,6 +1356,10 @@ namespace sickboy {
         return shift_right_impl(cpu, true);
     }
 
+    std::uint8_t shift_right_no_clear_impl(CPU& cpu) {
+        return shift_right_impl(cpu, false);
+    }
+
     // Instruction length and cycles here do NOT contain the length and cycle count of the prefix instruction itself.
     std::unordered_map<std::uint8_t, Instruction> CPU::prefixed_instruction_set = {
         { 0x10, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_set_zero_impl } },   // RL B
@@ -1373,7 +1378,22 @@ namespace sickboy {
         { 0x1D, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_set_zero_impl } },  // RR L
         { 0x1E, Instruction { .length = 1, .cycles = 12, .implementation = rotate_right_set_zero_impl } }, // RR [HL]
         { 0x1F, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_set_zero_impl } },  // RR A
+        { 0x20, Instruction { .length = 1, .cycles = 4, .implementation = shift_left_impl } },             // SLA B
+        { 0x21, Instruction { .length = 1, .cycles = 4, .implementation = shift_left_impl } },             // SLA C
+        { 0x22, Instruction { .length = 1, .cycles = 4, .implementation = shift_left_impl } },             // SLA D
+        { 0x23, Instruction { .length = 1, .cycles = 4, .implementation = shift_left_impl } },             // SLA E
+        { 0x24, Instruction { .length = 1, .cycles = 4, .implementation = shift_left_impl } },             // SLA H
+        { 0x25, Instruction { .length = 1, .cycles = 4, .implementation = shift_left_impl } },             // SLA L
+        { 0x26, Instruction { .length = 1, .cycles = 12, .implementation = shift_left_impl } },            // SLA [HL]
         { 0x27, Instruction { .length = 1, .cycles = 4, .implementation = shift_left_impl } },             // SLA A
+        { 0x28, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_no_clear_impl } },   // SRA B
+        { 0x29, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_no_clear_impl } },   // SRA C
+        { 0x2A, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_no_clear_impl } },   // SRA D
+        { 0x2B, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_no_clear_impl } },   // SRA E
+        { 0x2C, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_no_clear_impl } },   // SRA H
+        { 0x2D, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_no_clear_impl } },   // SRA L
+        { 0x2E, Instruction { .length = 1, .cycles = 12, .implementation = shift_right_no_clear_impl } },  // SRA [HL]
+        { 0x2F, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_no_clear_impl } },   // SRA A
         { 0x33, Instruction { .length = 1, .cycles = 4, .implementation = swap_impl } },                   // SWAP E
         { 0x37, Instruction { .length = 1, .cycles = 4, .implementation = swap_impl } },                   // SWAP A
         { 0x38, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_clear_impl } },      // SRL B
