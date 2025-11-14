@@ -16,7 +16,7 @@ namespace sickboy {
         void clear_buffers() const;
         void check_errors() const;
 
-        void render(const PPU::CroppedFrame& frame) const;
+        void render(const PPU::Frame& frame) const;
 
     private:
 

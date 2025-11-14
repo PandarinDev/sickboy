@@ -57,7 +57,7 @@ namespace sickboy {
         }
     }
 
-    void Renderer::render(const PPU::CroppedFrame& frame) const {
+    void Renderer::render(const PPU::Frame& frame) const {
         shader->use();
         ppu_texture->upload_grayscale(frame.data(), PPU::LCD_WIDTH, PPU::LCD_HEIGHT);
         vertex_array->bind();

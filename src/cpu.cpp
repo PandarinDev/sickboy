@@ -993,7 +993,7 @@ namespace sickboy {
         cpu.stop_requested = true;
         // In addition to setting the stop request flag we also need to clear IE and inputs
         static constexpr std::uint16_t IE_ADDRESS = 0xFFFF;
-        static constexpr std::uint16_t JOYPAD_ADDRESS = 0xFF00;
+        // static constexpr std::uint16_t JOYPAD_ADDRESS = 0xFF00;
         cpu.memory->write(IE_ADDRESS, 0);
         // TODO: Add joypad clearing - currently this is meaningless since joypad inputs
         // are always low - currently hard coded into MMU reads for the joypad address.

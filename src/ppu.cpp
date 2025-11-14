@@ -10,7 +10,8 @@ namespace sickboy {
         switch (mode) {
             case PPUMode::VERTICAL_BLANK: return 4560;
             case PPUMode::OAM_SCAN: return 80;
-            case PPUMode::DRAWING: return 289;
+            // TODO: Drawing can take up to 289 dots, implement draw penalties
+            case PPUMode::DRAWING: return 172;
             case PPUMode::HORIZONTAL_BLANK: return 204;
             default: throw std::runtime_error("Unknown PPU mode in get_max_mode_dot_length.");
         }
@@ -34,7 +35,8 @@ namespace sickboy {
     }
 
     PPU::PPU(const std::shared_ptr<MMU>& memory) :
-        memory(memory), mode(PPUMode::OAM_SCAN), current_mode_dots(0), last_draw_dots_length(0), current_scanline(0) {}
+        memory(memory), mode(PPUMode::OAM_SCAN), current_mode_dots(0),
+        last_draw_dots_length(0), current_scanline(0), current_column(0), frame({}) {}
 
     bool PPU::is_lcd_and_ppu_enabled() const {
         static const std::uint16_t LCD_CONTROL_BYTE_ADDRESS = 0xFF40;
@@ -50,15 +52,18 @@ namespace sickboy {
             static constexpr auto min_draw_length = 172;
             max_mode_length -= last_draw_dots_length - min_draw_length;
         }
+        else if (mode == PPUMode::DRAWING) {
+            draw_pixel();
+        }
         // When in vertical blank mode we need to increment the scanline every Nth dot
-        if (mode == PPUMode::VERTICAL_BLANK) {
+        else if (mode == PPUMode::VERTICAL_BLANK) {
             if (current_mode_dots % VBLANK_DOTS_PER_SCANLINE == 0) {
                 increment_scanline();
             }
         }
         // If we reached the maximum number of dots in a mode change to the next mode
         if (current_mode_dots >= max_mode_length) {
-            // Remember the drawing length to later reduce HBlank length
+            // Remember the drawing length to later reduce HBlank length and reset scanline column
             if (mode == PPUMode::DRAWING) {
                 last_draw_dots_length = current_mode_dots;
             }
@@ -91,8 +96,8 @@ namespace sickboy {
         return false;
     }
 
-
     void PPU::increment_scanline() {
+        current_column = 0;
         current_scanline = (current_scanline + 1) % MAX_SCANLINES;
         static constexpr std::uint16_t LCD_Y_COORD_ADDRESS = 0xFF44;
         memory->write(LCD_Y_COORD_ADDRESS, current_scanline);
@@ -114,15 +119,6 @@ namespace sickboy {
         memory->write(LCD_STATUS_ADDRESS, final_status);
     }
 
-    std::uint8_t get_tile_color_index(std::uint16_t row_colors, std::uint8_t pixel) {
-        std::uint8_t higher_bits = ((row_colors & 0xFF00) >> 8);
-        std::uint8_t lower_bits = (row_colors & 0xFF);
-        // High bits are the first pixels so pixel 0 is the 7th bit
-        std::uint8_t shift = 7 - pixel;
-        // Somewhat confusingly the high byte gives the lower bit of the returned color index
-        return (((lower_bits & (1 << shift)) >> shift) << 1) | ((higher_bits & (1 << shift)) >> shift);
-    }
-
     std::uint8_t color_index_to_grayscale_value(std::uint8_t color_palette, std::uint8_t color_index) {
         // TODO: Really unsure if these color values are correct or not, check in documentation
         static constexpr std::array<std::uint8_t, 4> COLOR_VALUE_LOOKUP = {
@@ -135,133 +131,152 @@ namespace sickboy {
         return COLOR_VALUE_LOOKUP.at(color_value);
     }
 
-    PPU::CroppedFrame PPU::compute_frame() const {
-        // TODO: The current frame logic needs to be completely dropped/reworked.
-        // Basically full frame/cropped frame distinction needs to go and we only ever want to
-        // render to what is currently called a cropped frame (160x144). This means that we want
-        // to apply the background scroll logic right at rendering, as well as introduce bounds
-        // checking for all of our object renderings and NOT draw any pixels outside of the frame
-        // instead of the current "always draw the full 8x8" tile logic.
-        PPU::FullFrame frame{};
+    std::uint8_t get_tile_color_index(std::uint16_t row_colors, std::uint8_t pixel) {
+        std::uint8_t higher_bits = ((row_colors & 0xFF00) >> 8);
+        std::uint8_t lower_bits = (row_colors & 0xFF);
+        // High bits are the first pixels so pixel 0 is the 7th bit
+        std::uint8_t shift = 7 - pixel;
+        // Somewhat confusingly the high byte gives the lower bit of the returned color index
+        return (((lower_bits & (1 << shift)) >> shift) << 1) | ((higher_bits & (1 << shift)) >> shift);
+    }
+
+    void PPU::draw_pixel() {
+        // There is a 12 dot penalty due to tile fetching at the beginning of draw
+        static constexpr std::uint8_t DRAW_START_PENALTY_DOTS = 12;
+        if (current_mode_dots <= DRAW_START_PENALTY_DOTS) {
+            return;
+        }
+        std::uint8_t pixel_color_index = 0;
 
         // TODO: We are currently ignoring some of LCD control data (such as OBJ size)
         static constexpr std::uint16_t LCD_CONTROL_BYTE_ADDRESS = 0xFF40;
-        static constexpr std::uint16_t NUM_BACKGROUND_TILES = 32 * 32;
-        static constexpr std::uint16_t COLOR_PALETTE_ADDR = 0xFF47;
+        static constexpr std::uint16_t COLOR_PALETTE_ADDRESS = 0xFF47;
         std::uint8_t control_byte = memory->read(LCD_CONTROL_BYTE_ADDRESS);
-        std::uint16_t tile_map_area = ((control_byte & 0b00001000) != 0)
-            ? 0x9C00
-            : 0x9800;
-        
+        std::uint8_t color_palette = memory->read(COLOR_PALETTE_ADDRESS);
+        bool is_background_and_window_enabled = (control_byte & 0b1) != 0;
+
+        // Draw background
+        if (is_background_and_window_enabled) {
+            pixel_color_index = fetch_background_color_index(control_byte);
+        }
+
+        // TODO: Draw windows
+
+        // Draw objects
+        bool is_obj_rendering_enabled = (control_byte & 0b00000010) != 0;
+        if (is_obj_rendering_enabled) {
+            const auto obj_pixel_info = fetch_object_pixel_info();
+            if (obj_pixel_info.has_value() &&
+                obj_pixel_info->color_idx != 0 &&
+                (!obj_pixel_info->draw_below_background || pixel_color_index == 0)) {
+                pixel_color_index = obj_pixel_info->color_idx;
+            }
+        }
+
+        // Scanline is guaranteed to be within [0, 143] during draw mode
+        const auto pixel_idx = current_scanline * LCD_WIDTH + current_column; 
+        frame[pixel_idx] = color_index_to_grayscale_value(color_palette, pixel_color_index);
+        ++current_column;
+    }
+
+    std::uint8_t PPU::fetch_background_color_index(std::uint8_t control_byte) const {
         enum class TileAddressingMode : std::uint8_t {
             SIGNED = 0,
             UNSIGNED = 1
         };
         auto addressing_mode = static_cast<TileAddressingMode>((control_byte & 0b00010000) >> 4);
-        std::uint16_t bg_window_tile_start_addr = (addressing_mode == TileAddressingMode::UNSIGNED)
+        std::uint16_t tile_data_area = (addressing_mode == TileAddressingMode::UNSIGNED)
             ? 0x8000
-            : 0x8800;
+            : 0x9000;
+        std::uint16_t tile_map_area = ((control_byte & 0b00001000) != 0)
+            ? 0x9C00
+            : 0x9800;
 
-        std::uint8_t color_palette = memory->read(COLOR_PALETTE_ADDR);
-        // Draw background
-        bool is_background_and_window_enabled = (control_byte & 0b1) != 0;
-        if (is_background_and_window_enabled) {
-            for (std::uint16_t i = 0; i < NUM_BACKGROUND_TILES; ++i) {
-                static constexpr auto tile_entry_size = sizeof(TileEntry::value_type) * std::tuple_size_v<TileEntry>;
-                TileEntry tile_entry;
-                if (addressing_mode == TileAddressingMode::UNSIGNED) {
-                    std::uint8_t tile_idx = memory->read(tile_map_area + i);
-                    memory->copy_from(bg_window_tile_start_addr + tile_idx * tile_entry_size, reinterpret_cast<std::uint8_t*>(&tile_entry), tile_entry_size);
-                }
-                else {
-                    std::int8_t tile_idx = static_cast<std::int8_t>(memory->read(tile_map_area + i));
-                    memory->copy_from(bg_window_tile_start_addr + tile_idx * tile_entry_size, reinterpret_cast<std::uint8_t*>(&tile_entry), tile_entry_size);
-                }
-                std::uint8_t x_offset = (i % 32) * 8;
-                std::uint8_t y_offset = static_cast<std::uint8_t>((i / 32) * 8);
-                draw_tile(tile_entry, x_offset, y_offset, color_palette, false, frame);
-            }
+        // Compute tilemap index and fetch the corresponding tile data from VRAM
+        const auto tilemap_info = compute_background_tilemap_info();
+        TileEntry tile_entry;
+        static constexpr auto tile_entry_size = sizeof(TileEntry::value_type) * std::tuple_size_v<TileEntry>;
+        if (addressing_mode == TileAddressingMode::UNSIGNED) {
+            std::uint8_t tile_idx = memory->read(tile_map_area + tilemap_info.tile_idx);
+            memory->copy_from(tile_data_area + tile_idx * tile_entry_size, reinterpret_cast<std::uint8_t*>(tile_entry.data()), tile_entry_size);
+        }
+        else {
+            std::int8_t tile_idx = static_cast<std::int8_t>(memory->read(tile_map_area + tilemap_info.tile_idx));
+            memory->copy_from(tile_data_area + tile_idx * tile_entry_size, reinterpret_cast<std::uint8_t*>(tile_entry.data()), tile_entry_size);
         }
 
-        // TODO: Draw window
-
-        // Draw objects if object rendering is enabled
-        bool is_obj_rendering_enabled = (control_byte & 0b00000010) != 0;
-        if (is_obj_rendering_enabled) {
-            draw_objects(color_palette, frame);
-        }
-
-        return crop_frame(frame);
+        // Get the corresponding row in the tile and compute the color index at X
+        std::uint16_t row_colors = tile_entry[tilemap_info.y_offset];
+        return get_tile_color_index(row_colors, tilemap_info.x_offset);
     }
 
-    std::vector<std::uint8_t> PPU::dump_vram() const {
-        std::vector<std::uint8_t> result;
-        result.resize(0x2000); // 8kB
-        memory->copy_from(0x8000, result.data(), result.size());
-        return result;
-    }
-
-    void PPU::draw_objects(std::uint8_t color_palette, PPU::FullFrame& frame) const {
-        // TODO: This object support is very rudimentary and many things (such as object flags) are ignored at the moment.
+    std::optional<PPU::ObjectPixelInfo> PPU::fetch_object_pixel_info() const {
         static constexpr std::uint16_t OBJ_TILE_START_ADDR = 0x8000;
         static constexpr std::uint16_t OAM_START_ADDR = 0xFE00;
         static constexpr std::uint8_t NUM_OAM_ENTRIES = 40;
 
+        // TODO: This should be optimized away by doing OAM search in the actual OAM search mode
+        // Checking every object for every pixel is excessive and unnecessary. Instead we should
+        // compute intersection data during OAM search and only check that here.
         for (std::uint8_t i = 0; i < NUM_OAM_ENTRIES; ++i) {
             static constexpr auto object_entry_size = sizeof(OAMEntry);
             // Copy object attribute mapping entry from VRAM
             OAMEntry object_entry;
             memory->copy_from(OAM_START_ADDR + i * object_entry_size, reinterpret_cast<std::uint8_t*>(&object_entry), object_entry_size);
+
+            // Skip the object if it does not intersect the current scanline
+            std::int16_t end_y = static_cast<std::int16_t>(object_entry.y);
+            // Note that since end_y and end_x are inclusive we are subtracting 1 less
+            // pixel (7/15) instead of 8/16 in order to get one tile worth of pixels.
+            // TODO: Change this -7 to -7/-15 depending on OBJ size in the control byte
+            std::int16_t start_y = end_y - 7;
+            std::int16_t end_x = static_cast<std::int16_t>(object_entry.x);
+            std::int16_t start_x = end_x - 7;
+            if (start_y > current_scanline ||
+                end_y < current_scanline ||
+                start_x > current_column ||
+                end_x < current_column) {
+                continue;
+            }
+
             // Copy tile data corresponding to OAM
             static constexpr auto tile_entry_size = sizeof(TileEntry::value_type) * std::tuple_size_v<TileEntry>;
             TileEntry tile_entry;
             std::uint16_t tile_offset = object_entry.tile_index * tile_entry_size;
             memory->copy_from(OBJ_TILE_START_ADDR + tile_offset, reinterpret_cast<std::uint8_t*>(tile_entry.data()), tile_entry_size);
-            draw_tile(tile_entry, object_entry.x, object_entry.y, color_palette, true, frame);
+            
+            std::uint16_t row_colors = tile_entry[end_y - current_scanline];
+            std::uint8_t color_idx = get_tile_color_index(row_colors, end_x - current_column);
+            bool draw_below_background = (object_entry.flags & 0b10000000) != 0;
+            // TODO: This is not entirely accurate - we should collect intersecting objects
+            // up to 10 entries and then select the one with the lowest X value (and the first in memory)
+            return ObjectPixelInfo {
+                .color_idx = color_idx,
+                .draw_below_background = draw_below_background
+            };
         }
+        return std::nullopt;
     }
 
-    void PPU::draw_tile(
-        const PPU::TileEntry& tile,
-        std::uint8_t x_offset,
-        std::uint8_t y_offset,
-        std::uint8_t color_palette,
-        bool is_object,
-        FullFrame& frame) const {
-        // Write color data to frame buffer
-        for (std::uint8_t y = 0; y < 8; ++y) {
-            std::uint16_t row_colors = tile[y];
-            for (std::uint8_t x = 0; x < 8; ++x) {
-                auto pixel_color_index = get_tile_color_index(row_colors, x);
-                // For objects color 0 means transparent - simply skip the pixel
-                if (is_object && pixel_color_index == 0) {
-                    continue;
-                }
-                auto color = color_index_to_grayscale_value(color_palette, pixel_color_index);
-                std::uint8_t final_x = x + x_offset;
-                std::uint8_t final_y = y + y_offset;
-                frame.at(final_y * 256 + final_x) = color;
-            }
-        }
-    }
-
-    PPU::CroppedFrame PPU::crop_frame(const FullFrame& frame) const {
-        static constexpr std::uint16_t SCROLL_Y_ADDR = 0xFF42;
-        static constexpr std::uint16_t SCROLL_X_ADDR = 0xFF43;
-        CroppedFrame result;
-        std::uint8_t scroll_y_value = memory->read(SCROLL_Y_ADDR);
-        std::uint8_t scroll_x_value = memory->read(SCROLL_X_ADDR);
-        for (std::uint8_t y = 0; y < LCD_HEIGHT; ++y) {
-            for (std::uint8_t x = 0; x < LCD_WIDTH; ++x) {
-                // Here we are essentially abusing that unsigned integers are guaranteed to wrap-around,
-                // so we force these values to wrap around then use the resulting values to reindex the full frame.
-                std::uint8_t final_y = y + scroll_y_value;
-                std::uint8_t final_x = x + scroll_x_value;
-                result[y * LCD_WIDTH + x] = frame[final_y * 256 + final_x];
-            }
-        }
-
-        return result;
+    PPU::BackgroundTileMapInfo PPU::compute_background_tilemap_info() const {
+        // Background tilemap index is not trivial to calculate due to the
+        // posibility of scrolling the background using SCX and SCY.
+        static constexpr std::uint16_t SCY_ADDRESS = 0xFF42;
+        static constexpr std::uint16_t SCX_ADDRESS = 0xFF43;
+        std::uint8_t scy = memory->read(SCY_ADDRESS);
+        std::uint8_t scx = memory->read(SCX_ADDRESS);
+        // Note that the background spans 256x256 pixels
+        std::uint8_t final_y = current_scanline + scy;
+        std::uint8_t final_x = current_column + scx;
+        // From the final coordinates we can calculate the tile indices
+        std::uint8_t tile_y = final_y / 8;
+        std::uint8_t tile_x = final_x / 8;
+        std::uint16_t tile_idx = tile_y * 32 + tile_x;
+        return BackgroundTileMapInfo {
+            .tile_idx = tile_idx,
+            .x_offset = static_cast<std::uint8_t>(final_x % 8),
+            .y_offset = static_cast<std::uint8_t>(final_y % 8)
+        };
     }
 
 }

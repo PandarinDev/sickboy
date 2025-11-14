@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <memory>
 #include <vector>
+#include <optional>
 
 namespace sickboy {
 
@@ -25,10 +26,7 @@ namespace sickboy {
         static constexpr std::uint8_t MAX_SCANLINES = 154;
         static constexpr std::uint16_t VBLANK_DOTS_PER_SCANLINE = 456;
 
-        // A frame actually has 256*256 dimensions which is later cropped into
-        // an LCD_WIDTH*LCD_HEIGHT region using the scroll registers.
-        using FullFrame = std::array<std::uint8_t, 256 * 256>;
-        using CroppedFrame = std::array<std::uint8_t, LCD_WIDTH * LCD_HEIGHT>;
+        using Frame = std::array<std::uint8_t, LCD_WIDTH * LCD_HEIGHT>;
 
         struct OAMEntry {
             std::uint8_t y;
@@ -47,6 +45,8 @@ namespace sickboy {
         std::uint16_t current_mode_dots;
         std::uint16_t last_draw_dots_length;
         std::uint8_t current_scanline;
+        std::uint8_t current_column;
+        Frame frame;
 
         PPU(const std::shared_ptr<MMU>& memory);
 
@@ -54,21 +54,32 @@ namespace sickboy {
 
         // Returns true if a new frame should be rendered
         bool tick();
-        CroppedFrame compute_frame() const;
-        std::vector<std::uint8_t> dump_vram() const;
 
     private:
 
+        struct BackgroundTileMapInfo {
+            std::uint16_t tile_idx;
+            std::uint8_t x_offset;
+            std::uint8_t y_offset;
+        };
+
+        struct ObjectPixelInfo {
+            std::uint8_t color_idx;
+            bool draw_below_background;
+        };
+
         void increment_scanline();
-        void draw_objects(std::uint8_t color_palette, FullFrame& frame) const;
+        void draw_pixel();
+        std::uint8_t fetch_background_color_index(std::uint8_t control_byte) const;
+        std::optional<ObjectPixelInfo> fetch_object_pixel_info() const;
+        BackgroundTileMapInfo compute_background_tilemap_info() const;
+        void draw_objects(std::uint8_t color_palette);
         void draw_tile(
             const TileEntry& tile,
             std::uint8_t x_offset,
             std::uint8_t y_offset,
             std::uint8_t color_palette,
-            bool is_object,
-            FullFrame& frame) const;
-        CroppedFrame crop_frame(const FullFrame& frame) const;
+            bool is_object);
 
     };
 

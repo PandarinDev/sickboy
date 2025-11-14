@@ -18,8 +18,7 @@ int main() {
             if (system.tick()) {
                 window.poll_events();
                 renderer.clear_buffers();
-                auto frame = system.ppu.compute_frame();
-                renderer.render(frame);
+                renderer.render(system.ppu.frame);
                 renderer.check_errors();
                 window.swap_buffers();
                 should_stop = window.should_close();
