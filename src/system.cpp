@@ -8,6 +8,7 @@ namespace sickboy {
     System::System(const std::filesystem::path& cartridge_path) :
         memory(std::make_shared<MMU>()), cpu(memory), ppu(memory), stopped(false) {
         // Load boot ROM contents
+        /*
         {
             auto rom_contents = FileUtils::read_binary("assets/dmg_boot.bin");
             if (rom_contents.size() != 256) {
@@ -15,6 +16,19 @@ namespace sickboy {
             }
             memory->copy_to_boot_rom(rom_contents.data());
         }
+        */
+
+        memory->set_boot_rom_enabled(false);
+        cpu.registers.a() = 0x01;
+        cpu.registers.f() = 0xB0;
+        cpu.registers.b() = 0x00;
+        cpu.registers.c() = 0x13;
+        cpu.registers.d() = 0x00;
+        cpu.registers.e() = 0xD8;
+        cpu.registers.h() = 0x01;
+        cpu.registers.l() = 0x4D;
+        cpu.registers.sp = 0xFFFE;
+        cpu.registers.pc = 0x0100;
 
         // Load cartridge data
         {

@@ -11,7 +11,7 @@ int main() {
     try {
         static constexpr auto window_multiplier = 4;
         Window window("SickBoy", PPU::LCD_WIDTH * window_multiplier, PPU::LCD_HEIGHT * window_multiplier);
-        System system("assets/tetris.gb");
+        System system("assets/blargg/01-special.gb");
         Renderer renderer;
         bool should_stop = false;
         while (!should_stop) {

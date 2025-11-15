@@ -12,6 +12,9 @@ namespace sickboy {
         // TODO: Add address translation based on bank mode and bank value ((higher << 5) | lower).
 
         // While boot ROM is enabled all reads between 0x00-0xFF go to the boot ROM
+        if (address == 0xFF44) {
+            return 0x90;
+        }
         if (boot_rom_enabled && address <= 0xFF) {
             return boot_rom[address];
         }

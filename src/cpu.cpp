@@ -1,6 +1,8 @@
 #include "cpu.h"
 #include "utils.h"
 
+#include <iostream>
+#include <format>
 #include <stdexcept>
 
 namespace sickboy {
@@ -135,6 +137,24 @@ namespace sickboy {
             return 1;
         }
 
+        // A:00 F:11 B:22 C:33 D:44 E:55 H:66 L:77 SP:8888 PC:9999 PCMEM:AA,BB,CC,DD
+        std::cout << "A:" << std::format("{:02X}", registers.a()) << " ";
+        std::cout << "F:" << std::format("{:02X}", registers.f()) << " ";
+        std::cout << "B:" << std::format("{:02X}", registers.b()) << " ";
+        std::cout << "C:" << std::format("{:02X}", registers.c()) << " ";
+        std::cout << "D:" << std::format("{:02X}", registers.d()) << " ";
+        std::cout << "E:" << std::format("{:02X}", registers.e()) << " ";
+        std::cout << "H:" << std::format("{:02X}", registers.h()) << " ";
+        std::cout << "L:" << std::format("{:02X}", registers.l()) << " ";
+        std::cout << "SP:" << std::format("{:04X}", registers.sp) << " ";
+        std::cout << "PC:" << std::format("{:04X}", registers.pc) << " ";
+        std::cout << "PCMEM:"
+            << std::format("{:02X}", memory->read(registers.pc + 0)) << ","
+            << std::format("{:02X}", memory->read(registers.pc + 1)) << ","
+            << std::format("{:02X}", memory->read(registers.pc + 2)) << ","
+            << std::format("{:02X}", memory->read(registers.pc + 3));
+        std::cout << std::dec << std::endl;
+
         // Fetch instruction
         auto was_prefixed = is_prefixed;
         auto instruction_code = memory->read(registers.pc);
@@ -142,6 +162,7 @@ namespace sickboy {
             ? lookup_prefixed_instruction(instruction_code)
             : lookup_instruction(instruction_code);
         auto additional_cycles = instruction.implementation(*this);
+
         // Since we are adding unsigned ints here wrap around is guaranteed in case of PC overflow
         registers.pc = registers.pc + instruction.length;
         // If the cycle started out prefixed reset the prefix
@@ -896,6 +917,9 @@ namespace sickboy {
             R8 = 0b10110,
             IMM8 = 0b11110
         };
+        if (cpu.registers.pc == 0xC362) {
+            std::cout << "dumb" << std::endl;
+        }
         auto instruction = cpu.memory->read(cpu.registers.pc);
         auto or_type = static_cast<OrType>((instruction & 0b11111000) >> 3);
         std::uint8_t reg_code = instruction & 0b111;
