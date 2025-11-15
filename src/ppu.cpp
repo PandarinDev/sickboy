@@ -1,6 +1,7 @@
 #include "ppu.h"
 
 #include <stdexcept>
+#include <algorithm>
 
 #include <iostream>
 
@@ -146,21 +147,36 @@ namespace sickboy {
         if (current_mode_dots <= DRAW_START_PENALTY_DOTS) {
             return;
         }
-        std::uint8_t pixel_color_index = 0;
+        // We are storing background color index separately as it makes it easier
+        // to decide if an object pixel with low priority should be drawn or not
+        std::uint8_t background_color_index = 0;
+        std::uint8_t pixel_color = 0;
 
         // TODO: We are currently ignoring some of LCD control data (such as OBJ size)
         static constexpr std::uint16_t LCD_CONTROL_BYTE_ADDRESS = 0xFF40;
-        static constexpr std::uint16_t COLOR_PALETTE_ADDRESS = 0xFF47;
         std::uint8_t control_byte = memory->read(LCD_CONTROL_BYTE_ADDRESS);
-        std::uint8_t color_palette = memory->read(COLOR_PALETTE_ADDRESS);
         bool is_background_and_window_enabled = (control_byte & 0b1) != 0;
 
-        // Draw background
+        // Draw window and background
         if (is_background_and_window_enabled) {
-            pixel_color_index = fetch_background_color_index(control_byte);
+            static constexpr std::uint16_t BACKGROUND_COLOR_PALETTE_ADDRESS = 0xFF47;
+            static constexpr std::uint16_t WY_ADDRESS = 0xFF4A;
+            static constexpr std::uint16_t WX_ADDRESS = 0xFF4B;
+            bool is_window_enabled = (control_byte & 0b00100000) != 0;
+            std::uint8_t background_color_palette = memory->read(BACKGROUND_COLOR_PALETTE_ADDRESS);
+            std::uint8_t window_start_y = memory->read(WY_ADDRESS);
+            std::uint16_t window_start_x = static_cast<std::int16_t>(memory->read(WX_ADDRESS)) - 7;
+            if (is_window_enabled &&
+                current_scanline >= window_start_y &&
+                current_column >= window_start_x) {
+                background_color_index = fetch_window_color_index(control_byte);
+                pixel_color = color_index_to_grayscale_value(background_color_palette, background_color_index);
+            }
+            else {
+                background_color_index = fetch_background_color_index(control_byte);
+                pixel_color = color_index_to_grayscale_value(background_color_palette, background_color_index);
+            }
         }
-
-        // TODO: Draw windows
 
         // Draw objects
         bool is_obj_rendering_enabled = (control_byte & 0b00000010) != 0;
@@ -168,14 +184,16 @@ namespace sickboy {
             const auto obj_pixel_info = fetch_object_pixel_info();
             if (obj_pixel_info.has_value() &&
                 obj_pixel_info->color_idx != 0 &&
-                (!obj_pixel_info->draw_below_background || pixel_color_index == 0)) {
-                pixel_color_index = obj_pixel_info->color_idx;
+                (!obj_pixel_info->draw_below_background || background_color_index == 0)) {
+                static constexpr std::uint16_t OBJECT_PALETTE_ADDRESS = 0xFF48;
+                std::uint8_t object_palette = memory->read(OBJECT_PALETTE_ADDRESS + obj_pixel_info->palette_idx);
+                pixel_color = color_index_to_grayscale_value(object_palette, obj_pixel_info->color_idx);
             }
         }
 
         // Scanline is guaranteed to be within [0, 143] during draw mode
         const auto pixel_idx = current_scanline * LCD_WIDTH + current_column; 
-        frame[pixel_idx] = color_index_to_grayscale_value(color_palette, pixel_color_index);
+        frame[pixel_idx] = pixel_color;
         ++current_column;
     }
 
@@ -210,14 +228,34 @@ namespace sickboy {
         return get_tile_color_index(row_colors, tilemap_info.x_offset);
     }
 
+    std::uint8_t PPU::fetch_window_color_index([[maybe_unused]] std::uint8_t control_byte) const {
+        /*
+        std::uint16_t window_tilemap = ((control_byte & 0b01000000) != 0)
+            ? 0x9C00
+            : 0x9800;
+        */
+        // TODO: Implement
+        return 0;
+    }
+
     std::optional<PPU::ObjectPixelInfo> PPU::fetch_object_pixel_info() const {
         static constexpr std::uint16_t OBJ_TILE_START_ADDR = 0x8000;
         static constexpr std::uint16_t OAM_START_ADDR = 0xFE00;
         static constexpr std::uint8_t NUM_OAM_ENTRIES = 40;
+        static constexpr std::uint8_t MAX_INTERSECTING_OBJECTS = 10;
 
         // TODO: This should be optimized away by doing OAM search in the actual OAM search mode
         // Checking every object for every pixel is excessive and unnecessary. Instead we should
         // compute intersection data during OAM search and only check that here.
+        struct ObjectWithTile {
+            OAMEntry object;
+            TileEntry tile;
+            std::int16_t start_x;
+            std::int16_t start_y;
+            std::int16_t end_x;
+            std::int16_t end_y;
+        };
+        std::vector<ObjectWithTile> intersecting_objects;
         for (std::uint8_t i = 0; i < NUM_OAM_ENTRIES; ++i) {
             static constexpr auto object_entry_size = sizeof(OAMEntry);
             // Copy object attribute mapping entry from VRAM
@@ -245,17 +283,43 @@ namespace sickboy {
             std::uint16_t tile_offset = object_entry.tile_index * tile_entry_size;
             memory->copy_from(OBJ_TILE_START_ADDR + tile_offset, reinterpret_cast<std::uint8_t*>(tile_entry.data()), tile_entry_size);
             
-            std::uint16_t row_colors = tile_entry[end_y - current_scanline];
-            std::uint8_t color_idx = get_tile_color_index(row_colors, end_x - current_column);
-            bool draw_below_background = (object_entry.flags & 0b10000000) != 0;
-            // TODO: This is not entirely accurate - we should collect intersecting objects
-            // up to 10 entries and then select the one with the lowest X value (and the first in memory)
-            return ObjectPixelInfo {
-                .color_idx = color_idx,
-                .draw_below_background = draw_below_background
-            };
+            intersecting_objects.emplace_back(ObjectWithTile{
+                .object = std::move(object_entry),
+                .tile = std::move(tile_entry),
+                .start_x = start_x,
+                .start_y = start_y,
+                .end_x = end_x,
+                .end_y = end_y
+            });
+            // TODO: Check if we really should stop after 10
+            if (intersecting_objects.size() >= MAX_INTERSECTING_OBJECTS) {
+                break;
+            }
         }
-        return std::nullopt;
+        if (intersecting_objects.empty()) {
+            return std::nullopt;
+        }
+        std::stable_sort(intersecting_objects.begin(), intersecting_objects.end(), [](const auto& first, const auto& second) {
+            return first.object.x < second.object.x;
+        });
+        const auto& object = intersecting_objects[0];
+        bool flip_vertically = (object.object.flags & 0b01000000) != 0;
+        bool flip_horizontally = (object.object.flags & 0b00100000) != 0;
+        std::uint16_t row_colors = object.tile[flip_vertically
+            ? (7 - (object.end_y - current_scanline))
+            : (object.end_y - current_scanline)];
+        std::uint8_t color_idx = get_tile_color_index(row_colors, flip_horizontally
+            ? (7 - (object.end_x - current_column))
+            : (object.end_x - current_column));
+        std::uint8_t palette_idx = (object.object.flags & 0b00010000) >> 4;
+        bool draw_below_background = (object.object.flags & 0b10000000) != 0;
+        // TODO: This is not entirely accurate - we should collect intersecting objects
+        // up to 10 entries and then select the one with the lowest X value (and the first in memory)
+        return ObjectPixelInfo {
+            .color_idx = color_idx,
+            .palette_idx = palette_idx,
+            .draw_below_background = draw_below_background
+        };
     }
 
     PPU::BackgroundTileMapInfo PPU::compute_background_tilemap_info() const {

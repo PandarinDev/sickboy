@@ -65,12 +65,14 @@ namespace sickboy {
 
         struct ObjectPixelInfo {
             std::uint8_t color_idx;
+            std::uint8_t palette_idx;
             bool draw_below_background;
         };
 
         void increment_scanline();
         void draw_pixel();
         std::uint8_t fetch_background_color_index(std::uint8_t control_byte) const;
+        std::uint8_t fetch_window_color_index(std::uint8_t control_byte) const;
         std::optional<ObjectPixelInfo> fetch_object_pixel_info() const;
         BackgroundTileMapInfo compute_background_tilemap_info() const;
         void draw_objects(std::uint8_t color_palette);
