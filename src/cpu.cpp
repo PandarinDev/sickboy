@@ -137,27 +137,29 @@ namespace sickboy {
             return 1;
         }
 
-        // A:00 F:11 B:22 C:33 D:44 E:55 H:66 L:77 SP:8888 PC:9999 PCMEM:AA,BB,CC,DD
-        std::cout << "A:" << std::format("{:02X}", registers.a()) << " ";
-        std::cout << "F:" << std::format("{:02X}", registers.f()) << " ";
-        std::cout << "B:" << std::format("{:02X}", registers.b()) << " ";
-        std::cout << "C:" << std::format("{:02X}", registers.c()) << " ";
-        std::cout << "D:" << std::format("{:02X}", registers.d()) << " ";
-        std::cout << "E:" << std::format("{:02X}", registers.e()) << " ";
-        std::cout << "H:" << std::format("{:02X}", registers.h()) << " ";
-        std::cout << "L:" << std::format("{:02X}", registers.l()) << " ";
-        std::cout << "SP:" << std::format("{:04X}", registers.sp) << " ";
-        std::cout << "PC:" << std::format("{:04X}", registers.pc) << " ";
-        std::cout << "PCMEM:"
-            << std::format("{:02X}", memory->read(registers.pc + 0)) << ","
-            << std::format("{:02X}", memory->read(registers.pc + 1)) << ","
-            << std::format("{:02X}", memory->read(registers.pc + 2)) << ","
-            << std::format("{:02X}", memory->read(registers.pc + 3));
-        std::cout << std::dec << std::endl;
-
         // Fetch instruction
         auto was_prefixed = is_prefixed;
         auto instruction_code = memory->read(registers.pc);
+        if (!was_prefixed) {
+            // A:00 F:11 B:22 C:33 D:44 E:55 H:66 L:77 SP:8888 PC:9999 PCMEM:AA,BB,CC,DD
+            std::cout << "A:" << std::format("{:02X}", registers.a()) << " ";
+            std::cout << "F:" << std::format("{:02X}", registers.f()) << " ";
+            std::cout << "B:" << std::format("{:02X}", registers.b()) << " ";
+            std::cout << "C:" << std::format("{:02X}", registers.c()) << " ";
+            std::cout << "D:" << std::format("{:02X}", registers.d()) << " ";
+            std::cout << "E:" << std::format("{:02X}", registers.e()) << " ";
+            std::cout << "H:" << std::format("{:02X}", registers.h()) << " ";
+            std::cout << "L:" << std::format("{:02X}", registers.l()) << " ";
+            std::cout << "SP:" << std::format("{:04X}", registers.sp) << " ";
+            std::cout << "PC:" << std::format("{:04X}", registers.pc) << " ";
+            std::cout << "PCMEM:"
+                << std::format("{:02X}", memory->read(registers.pc + 0)) << ","
+                << std::format("{:02X}", memory->read(registers.pc + 1)) << ","
+                << std::format("{:02X}", memory->read(registers.pc + 2)) << ","
+                << std::format("{:02X}", memory->read(registers.pc + 3));
+            std::cout << std::dec << std::endl;
+        }
+
         const auto& instruction = is_prefixed
             ? lookup_prefixed_instruction(instruction_code)
             : lookup_instruction(instruction_code);
@@ -591,6 +593,9 @@ namespace sickboy {
 
     std::uint8_t push_impl(CPU& cpu) {
         auto instruction = cpu.memory->read(cpu.registers.pc);
+        if (instruction == 0xF5) {
+            std::cout << "whachadoin" << std::endl;
+        }
         std::uint8_t reg_code = (instruction & 0b00110000) >> 4;
         auto reg = r16stk_lookup(cpu, reg_code);
         push_value(cpu, *reg);
@@ -689,6 +694,14 @@ namespace sickboy {
 
     std::uint8_t pop_impl(CPU& cpu) {
         auto instruction = cpu.memory->read(cpu.registers.pc);
+        /*
+        if (cpu.registers.pc == 0xC31E &&
+            cpu.registers.b() == 0x13 &&
+            cpu.registers.c() == 0x01 &&
+            cpu.registers.d() == 0x12) {
+            std::cout << "zez" << std::endl;
+        }
+        */
         std::uint8_t reg_code = (instruction & 0b00110000) >> 4;
         auto reg = r16stk_lookup(cpu, reg_code);
         *reg = pop_value(cpu) << 0;
@@ -917,9 +930,6 @@ namespace sickboy {
             R8 = 0b10110,
             IMM8 = 0b11110
         };
-        if (cpu.registers.pc == 0xC362) {
-            std::cout << "dumb" << std::endl;
-        }
         auto instruction = cpu.memory->read(cpu.registers.pc);
         auto or_type = static_cast<OrType>((instruction & 0b11111000) >> 3);
         std::uint8_t reg_code = instruction & 0b111;
@@ -927,7 +937,7 @@ namespace sickboy {
             ? r8_get_value(cpu, reg_code)
             : cpu.memory->read(cpu.registers.pc + 1);
         std::uint8_t new_value = cpu.registers.a() | value;
-        cpu.registers.a() = value;
+        cpu.registers.a() = new_value;
 
         cpu.registers.set_flag_z(new_value == 0);
         cpu.registers.set_flag_n(false);
