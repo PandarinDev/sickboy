@@ -903,7 +903,7 @@ namespace sickboy {
             ? r8_get_value(cpu, reg_code)
             : cpu.memory->read(cpu.registers.pc + 1);
         std::uint8_t new_value = cpu.registers.a() | value;
-        cpu.registers.a() = value;
+        cpu.registers.a() = new_value;
 
         cpu.registers.set_flag_z(new_value == 0);
         cpu.registers.set_flag_n(false);
