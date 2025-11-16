@@ -672,6 +672,10 @@ namespace sickboy {
         auto reg = r16stk_lookup(cpu, reg_code);
         *reg = pop_value(cpu) << 0;
         *reg |= pop_value(cpu) << 8;
+        // If we are POPing to AF mask out the lowest 4 bits
+        if (reg == &cpu.registers.af) {
+            *reg &= 0xFFF0;
+        }
 
         // The only case when we are setting flags is when we are popping AF,
         // because then of course we are restoring values to the F register.
