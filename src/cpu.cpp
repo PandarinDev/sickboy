@@ -1239,7 +1239,8 @@ namespace sickboy {
         { 0xDA, Instruction { .length = 3, .cycles = 12, .implementation = jump_absolute_impl } },                  // JP C, IMM16
         // 0xDB is not a valid instruction
         { 0xDC, Instruction { .length = 3, .cycles = 12, .implementation = call_impl } },                           // CALL C, IMM16
-        // 0xDE is not a valid instruction
+        // 0xDD is not a valid instruction
+        { 0xDE, Instruction { .length = 2, .cycles = 8, .implementation = sub_carry_impl } },                       // SBC A, IMM8
         { 0xDF, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },                        // RST 18H
         { 0xE0, Instruction { .length = 2, .cycles = 12, .implementation = load8_high_impl } },                     // LDH [IMM8], A
         { 0xE1, Instruction { .length = 1, .cycles = 12, .implementation = pop_impl } },                            // POP HL
