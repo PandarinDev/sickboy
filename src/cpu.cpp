@@ -625,16 +625,25 @@ namespace sickboy {
         return rotate_left_circular_impl(cpu, false);
     }
 
-    std::uint8_t rotate_right_circular_impl(CPU& cpu) {
+    std::uint8_t rotate_right_circular_impl(CPU& cpu, bool set_zero_flag) {
         // Circular rotate puts the 0th bit into the 7th bit instead of carry
         std::uint8_t rotated_bit = cpu.registers.a() & 0b1;
-        cpu.registers.a() = (cpu.registers.a() >> 1) | (rotated_bit << 7);
+        std::uint8_t result = (cpu.registers.a() >> 1) | (rotated_bit << 7);
+        cpu.registers.a() = result;
 
-        cpu.registers.set_flag_z(false);
+        cpu.registers.set_flag_z(set_zero_flag ? (result == 0) : false);
         cpu.registers.set_flag_n(false);
         cpu.registers.set_flag_h(false);
         cpu.registers.set_flag_c(rotated_bit != 0);
         return 0;
+    }
+
+    std::uint8_t rotate_right_circular_clear_zero_impl(CPU& cpu) {
+        return rotate_right_circular_impl(cpu, false);
+    }
+
+    std::uint8_t rotate_right_circular_set_zero_impl(CPU& cpu) {
+        return rotate_right_circular_impl(cpu, true);
     }
 
     std::uint8_t rotate_right_impl(CPU& cpu, bool set_zero) {
@@ -1018,262 +1027,262 @@ namespace sickboy {
     // For instructions where we do not want PC to be modified after the instruction (such as CALL, RET, etc.)
     // we set the instruction length to be 0. Take care when looking up instruction length as this might yield unexpected values.
     std::unordered_map<std::uint8_t, Instruction> CPU::instruction_set = {
-        { 0x00, Instruction { .length = 1, .cycles = 4, .implementation = nop_impl } },                             // NOP
-        { 0x01, Instruction { .length = 3, .cycles = 16, .implementation = load16_impl } },                         // LD BC, IMM16
-        { 0x02, Instruction { .length = 1, .cycles = 8, .implementation = load16_impl } },                          // LD [BC], A
-        { 0x03, Instruction { .length = 1, .cycles = 8, .implementation = inc16_impl } },                           // INC BC
-        { 0x04, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                            // INC B
-        { 0x05, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                            // DEC B
-        { 0x06, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },                      // LD B, IMM8
-        { 0x07, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_circular_clear_zero_impl } }, // RLCA
-        { 0x08, Instruction { .length = 3, .cycles = 20, .implementation = load16_impl } },                         // LD [IMM16], SP
-        { 0x09, Instruction { .length = 1, .cycles = 8, .implementation = add16_impl } },                           // ADD HL, BC
-        { 0x0A, Instruction { .length = 1, .cycles = 8, .implementation = load16_impl } },                          // LD A, [BC]
-        { 0x0B, Instruction { .length = 1, .cycles = 8, .implementation = dec16_impl } },                           // DEC BC
-        { 0x0C, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                            // INC C
-        { 0x0D, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                            // DEC C
-        { 0x0E, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },                      // LD E, IMM8
-        { 0x0F, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_circular_impl } },           // RRCA
-        { 0x10, Instruction { .length = 2, .cycles = 4, .implementation = stop_impl } },                            // STOP 0
-        { 0x11, Instruction { .length = 3, .cycles = 16, .implementation = load16_impl } },                         // LD DE, IMM16
-        { 0x12, Instruction { .length = 1, .cycles = 8, .implementation = load16_impl } },                          // LD [DE], A
-        { 0x13, Instruction { .length = 1, .cycles = 8, .implementation = inc16_impl } },                           // INC DE
-        { 0x14, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                            // INC D
-        { 0x15, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                            // DEC D
-        { 0x16, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },                      // LD D, IMM8
-        { 0x17, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_clear_zero_impl } },          // RLA
-        { 0x18, Instruction { .length = 2, .cycles = 12, .implementation = jump_relative_impl } },                  // JR IMM8
-        { 0x19, Instruction { .length = 1, .cycles = 8, .implementation = add16_impl } },                           // ADD HL, DE
-        { 0x1A, Instruction { .length = 1, .cycles = 8, .implementation = load16_impl } },                          // LD A, [DE]
-        { 0x1B, Instruction { .length = 1, .cycles = 8, .implementation = dec16_impl } },                           // DEC DE
-        { 0x1C, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                            // INC E
-        { 0x1D, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                            // DEC E
-        { 0x1E, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },                      // LD E, IMM8
-        { 0x1F, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_clear_zero_impl } },         // RRA
-        { 0x20, Instruction { .length = 2, .cycles = 8, .implementation = jump_relative_impl } },                   // JR NZ, IMM8 (signed)
-        { 0x21, Instruction { .length = 3, .cycles = 16, .implementation = load16_impl } },                         // LD HL, IMM16
-        { 0x22, Instruction { .length = 1, .cycles = 8, .implementation = load16_impl } },                          // LD [HL+], A
-        { 0x23, Instruction { .length = 1, .cycles = 8, .implementation = inc16_impl } },                           // INC HL
-        { 0x24, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                            // INC H
-        { 0x25, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                            // DEC H
-        { 0x26, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },                      // LD H, IMM8
-        { 0x27, Instruction { .length = 1, .cycles = 4, .implementation = binary_coded_decimal_impl } },            // DAA
-        { 0x28, Instruction { .length = 2, .cycles = 8, .implementation = jump_relative_impl } },                   // JR Z, IMM8
-        { 0x29, Instruction { .length = 1, .cycles = 8, .implementation = add16_impl } },                           // ADD HL, HL
-        { 0x2A, Instruction { .length = 1, .cycles = 8, .implementation = load16_impl } },                          // LD A, [HL+]
-        { 0x2B, Instruction { .length = 1, .cycles = 8, .implementation = dec16_impl } },                           // DEC HL
-        { 0x2C, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                            // INC L
-        { 0x2D, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                            // DEC L
-        { 0x2E, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },                      // LD L, IMM8
-        { 0x2F, Instruction { .length = 1, .cycles = 4, .implementation = complement_impl } },                      // CPL
-        { 0x30, Instruction { .length = 2, .cycles = 8, .implementation = jump_relative_impl } },                   // JR NC, IMM8
-        { 0x31, Instruction { .length = 3, .cycles = 16, .implementation = load16_impl } },                         // LD SP, IMM16
-        { 0x32, Instruction { .length = 1, .cycles = 16, .implementation = load16_impl } },                         // LD SP, IMM16
-        { 0x33, Instruction { .length = 1, .cycles = 8, .implementation = inc16_impl } },                           // INC SP
-        { 0x34, Instruction { .length = 1, .cycles = 12, .implementation = inc8_impl } },                           // INC [HL]
-        { 0x35, Instruction { .length = 1, .cycles = 12, .implementation = dec8_impl } },                           // DEC [HL]
-        { 0x36, Instruction { .length = 2, .cycles = 12, .implementation = load8_imm8_impl } },                     // LD [HL], IMM8
-        { 0x37, Instruction { .length = 1, .cycles = 4, .implementation = set_carry_flag_impl } },                  // SCF
-        { 0x38, Instruction { .length = 2, .cycles = 8, .implementation = jump_relative_impl } },                   // JR C, r8
-        { 0x39, Instruction { .length = 1, .cycles = 8, .implementation = add16_impl } },                           // ADD HL, SP
-        { 0x3A, Instruction { .length = 1, .cycles = 8, .implementation = load16_impl } },                          // LD A, [HL-]
-        { 0x3B, Instruction { .length = 1, .cycles = 8, .implementation = dec16_impl } },                           // DEC SP
-        { 0x3C, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                            // INC A
-        { 0x3D, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                            // DEC A
-        { 0x3E, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },                      // LD A, IMM8
-        { 0x3F, Instruction { .length = 1, .cycles = 4, .implementation = flip_carry_flag_impl } },                 // CCF
-        { 0x40, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD B, B
-        { 0x41, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD B, C
-        { 0x42, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD B, D
-        { 0x43, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD B, E
-        { 0x44, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD B, H
-        { 0x45, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD B, L
-        { 0x46, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                        // LD B, [HL]
-        { 0x47, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD B, A
-        { 0x48, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD C, B
-        { 0x49, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD C, C
-        { 0x4A, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD C, D
-        { 0x4B, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD C, E
-        { 0x4C, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD C, H
-        { 0x4D, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD C, L
-        { 0x4E, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                        // LD C, [HL]
-        { 0x4F, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD C, A
-        { 0x50, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD D, B
-        { 0x51, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD D, C
-        { 0x52, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD D, D
-        { 0x53, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD D, E
-        { 0x54, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD D, H
-        { 0x55, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD D, L
-        { 0x56, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                        // LD D, [HL]
-        { 0x57, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD D, A
-        { 0x58, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD E, B
-        { 0x59, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD E, C
-        { 0x5A, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD E, D
-        { 0x5B, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD E, E
-        { 0x5C, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD E, H
-        { 0x5D, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD E, L
-        { 0x5E, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                        // LD E, [HL]
-        { 0x5F, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD E, A
-        { 0x60, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD H, B
-        { 0x61, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD H, C
-        { 0x62, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD H, D
-        { 0x63, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD H, E
-        { 0x64, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD H, H
-        { 0x65, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD H, L
-        { 0x66, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                        // LD H, [HL]
-        { 0x67, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD H, A
-        { 0x68, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD L, B
-        { 0x69, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD L, C
-        { 0x6A, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD L, D
-        { 0x6B, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD L, E
-        { 0x6C, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD L, H
-        { 0x6D, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD L, L
-        { 0x6E, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                        // LD L, [HL]
-        { 0x6F, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD L, A
-        { 0x70, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                        // LD [HL], B
-        { 0x71, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                        // LD [HL], C
-        { 0x72, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                        // LD [HL], D
-        { 0x73, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                        // LD [HL], E
-        { 0x74, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                        // LD [HL], H
-        { 0x75, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                        // LD [HL], L
-        { 0x76, Instruction { .length = 1, .cycles = 4, .implementation = halt_impl } },                            // HALT
-        { 0x77, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                        // LD [HL], A
-        { 0x78, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD A, B
-        { 0x79, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD A, C
-        { 0x7A, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD A, D
-        { 0x7B, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD A, E
-        { 0x7C, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl} },                         // LD A, H
-        { 0x7D, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD A, L
-        { 0x7E, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                        // LD A, [HL]
-        { 0x7F, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                        // LD A, A
-        { 0x80, Instruction { .length = 1, .cycles = 4, .implementation = add8_impl } },                            // ADD A, B
-        { 0x81, Instruction { .length = 1, .cycles = 4, .implementation = add8_impl } },                            // ADD A, C
-        { 0x82, Instruction { .length = 1, .cycles = 4, .implementation = add8_impl } },                            // ADD A, D
-        { 0x83, Instruction { .length = 1, .cycles = 4, .implementation = add8_impl } },                            // ADD A, E
-        { 0x84, Instruction { .length = 1, .cycles = 4, .implementation = add8_impl } },                            // ADD A, H
-        { 0x85, Instruction { .length = 1, .cycles = 4, .implementation = add8_impl } },                            // ADD A, L
-        { 0x86, Instruction { .length = 1, .cycles = 8, .implementation = add8_impl } },                            // ADD A, [HL]
-        { 0x87, Instruction { .length = 1, .cycles = 4, .implementation = add8_impl } },                            // ADD A, A
-        { 0x88, Instruction { .length = 1, .cycles = 4, .implementation = add8_carry_impl } },                      // ADC A, B
-        { 0x89, Instruction { .length = 1, .cycles = 4, .implementation = add8_carry_impl } },                      // ADC A, C
-        { 0x8A, Instruction { .length = 1, .cycles = 4, .implementation = add8_carry_impl } },                      // ADC A, D
-        { 0x8B, Instruction { .length = 1, .cycles = 4, .implementation = add8_carry_impl } },                      // ADC A, E
-        { 0x8C, Instruction { .length = 1, .cycles = 4, .implementation = add8_carry_impl } },                      // ADC A, H
-        { 0x8D, Instruction { .length = 1, .cycles = 4, .implementation = add8_carry_impl } },                      // ADC A, L
-        { 0x8E, Instruction { .length = 1, .cycles = 8, .implementation = add8_carry_impl } },                      // ADC A, [HL]
-        { 0x8F, Instruction { .length = 1, .cycles = 4, .implementation = add8_carry_impl } },                      // ADC A, A
-        { 0x90, Instruction { .length = 1, .cycles = 4, .implementation = sub_impl } },                             // SUB A, B
-        { 0x91, Instruction { .length = 1, .cycles = 4, .implementation = sub_impl } },                             // SUB A, C
-        { 0x92, Instruction { .length = 1, .cycles = 4, .implementation = sub_impl } },                             // SUB A, D
-        { 0x93, Instruction { .length = 1, .cycles = 4, .implementation = sub_impl } },                             // SUB A, E
-        { 0x94, Instruction { .length = 1, .cycles = 4, .implementation = sub_impl } },                             // SUB A, H
-        { 0x95, Instruction { .length = 1, .cycles = 4, .implementation = sub_impl } },                             // SUB A, L
-        { 0x96, Instruction { .length = 1, .cycles = 8, .implementation = sub_impl } },                             // SUB A, [HL]
-        { 0x97, Instruction { .length = 1, .cycles = 4, .implementation = sub_impl } },                             // SUB A, A
-        { 0x98, Instruction { .length = 1, .cycles = 4, .implementation = sub_carry_impl } },                       // SBC A, B
-        { 0x99, Instruction { .length = 1, .cycles = 4, .implementation = sub_carry_impl } },                       // SBC A, C
-        { 0x9A, Instruction { .length = 1, .cycles = 4, .implementation = sub_carry_impl } },                       // SBC A, D
-        { 0x9B, Instruction { .length = 1, .cycles = 4, .implementation = sub_carry_impl } },                       // SBC A, E
-        { 0x9C, Instruction { .length = 1, .cycles = 4, .implementation = sub_carry_impl } },                       // SBC A, H
-        { 0x9D, Instruction { .length = 1, .cycles = 4, .implementation = sub_carry_impl } },                       // SBC A, L
-        { 0x9E, Instruction { .length = 1, .cycles = 8, .implementation = sub_carry_impl } },                       // SBC A, [HL]
-        { 0x9F, Instruction { .length = 1, .cycles = 4, .implementation = sub_carry_impl } },                       // SBC A, A
-        { 0xA0, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                             // AND A, B
-        { 0xA1, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                             // AND A, C
-        { 0xA2, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                             // AND A, D
-        { 0xA3, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                             // AND A, E
-        { 0xA4, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                             // AND A, H
-        { 0xA5, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                             // AND A, L
-        { 0xA6, Instruction { .length = 1, .cycles = 8, .implementation = and_impl } },                             // AND A, [HL]
-        { 0xA7, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                             // AND A, A
-        { 0xA8, Instruction { .length = 1, .cycles = 4, .implementation = xor_impl } },                             // XOR A, B
-        { 0xA9, Instruction { .length = 1, .cycles = 4, .implementation = xor_impl } },                             // XOR A, C
-        { 0xAA, Instruction { .length = 1, .cycles = 4, .implementation = xor_impl } },                             // XOR A, D
-        { 0xAB, Instruction { .length = 1, .cycles = 4, .implementation = xor_impl } },                             // XOR A, E
-        { 0xAC, Instruction { .length = 1, .cycles = 4, .implementation = xor_impl } },                             // XOR A, H
-        { 0xAD, Instruction { .length = 1, .cycles = 4, .implementation = xor_impl } },                             // XOR A, L
-        { 0xAE, Instruction { .length = 1, .cycles = 8, .implementation = xor_impl } },                             // XOR [HL]
-        { 0xAF, Instruction { .length = 1, .cycles = 4, .implementation = xor_impl } },                             // XOR A, A
-        { 0xB0, Instruction { .length = 1, .cycles = 4, .implementation = or_impl } },                              // OR B
-        { 0xB1, Instruction { .length = 1, .cycles = 4, .implementation = or_impl }},                               // OR C
-        { 0xB2, Instruction { .length = 1, .cycles = 4, .implementation = or_impl }},                               // OR D
-        { 0xB3, Instruction { .length = 1, .cycles = 4, .implementation = or_impl }},                               // OR E
-        { 0xB4, Instruction { .length = 1, .cycles = 4, .implementation = or_impl }},                               // OR H
-        { 0xB5, Instruction { .length = 1, .cycles = 4, .implementation = or_impl }},                               // OR L
-        { 0xB6, Instruction { .length = 1, .cycles = 8, .implementation = or_impl }},                               // OR [HL]
-        { 0xB7, Instruction { .length = 1, .cycles = 4, .implementation = or_impl }},                               // OR A
-        { 0xB8, Instruction { .length = 1, .cycles = 4, .implementation = compare_impl } },                         // CP A, B
-        { 0xB9, Instruction { .length = 1, .cycles = 4, .implementation = compare_impl } },                         // CP A, C
-        { 0xBA, Instruction { .length = 1, .cycles = 4, .implementation = compare_impl } },                         // CP A, D
-        { 0xBB, Instruction { .length = 1, .cycles = 4, .implementation = compare_impl } },                         // CP A, E
-        { 0xBC, Instruction { .length = 1, .cycles = 4, .implementation = compare_impl } },                         // CP A, H
-        { 0xBD, Instruction { .length = 1, .cycles = 4, .implementation = compare_impl } },                         // CP A, L
-        { 0xBE, Instruction { .length = 1, .cycles = 8, .implementation = compare_impl } },                         // CP A, [HL]
-        { 0xBF, Instruction { .length = 1, .cycles = 4, .implementation = compare_impl } },                         // CP A, A
-        { 0xC0, Instruction { .length = 1, .cycles = 8, .implementation = ret_impl } },                             // RET NZ
-        { 0xC1, Instruction { .length = 1, .cycles = 12, .implementation = pop_impl } },                            // POP BC
-        { 0xC2, Instruction { .length = 3, .cycles = 12, .implementation = jump_absolute_impl } },                  // JP NZ, IMM16
-        { 0xC3, Instruction { .length = 0, .cycles = 12, .implementation = jump_absolute_impl } },                  // JP IMM16
-        { 0xC4, Instruction { .length = 3, .cycles = 12, .implementation = call_impl } },                           // CALL NZ, IMM16
-        { 0xC5, Instruction { .length = 1, .cycles = 16, .implementation = push_impl } },                           // PUSH BC
-        { 0xC6, Instruction { .length = 2, .cycles = 8, .implementation = add8_impl } },                            // ADD A, IMM8
-        { 0xC7, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },                        // RST 00H
-        { 0xC8, Instruction { .length = 1, .cycles = 8, .implementation = ret_impl } },                             // RET Z
-        { 0xC9, Instruction { .length = 0, .cycles = 16, .implementation = ret_impl } },                            // RET
-        { 0xCA, Instruction { .length = 3, .cycles = 12, .implementation = jump_absolute_impl } },                  // JP Z, IMM16
-        { 0xCB, Instruction { .length = 1, .cycles = 4, .implementation = enable_prefix } },                        // PREFIX
-        { 0xCC, Instruction { .length = 3, .cycles = 12, .implementation = call_impl } },                           // CALL Z, IMM16
-        { 0xCD, Instruction { .length = 0, .cycles = 24, .implementation = call_impl } },                           // CALL IMM16
-        { 0xCE, Instruction { .length = 2, .cycles = 8, .implementation = add8_carry_impl } },                      // ADC A, IMM8
-        { 0xCF, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },                        // RST 08H
-        { 0xD0, Instruction { .length = 1, .cycles = 8, .implementation = ret_impl } },                             // RET NC
-        { 0xD1, Instruction { .length = 1, .cycles = 12, .implementation = pop_impl } },                            // POP DE
-        { 0xD2, Instruction { .length = 3, .cycles = 12, .implementation = jump_absolute_impl } },                  // JP NC, IMM16
+        { 0x00, Instruction { .length = 1, .cycles = 4, .implementation = nop_impl } },                              // NOP
+        { 0x01, Instruction { .length = 3, .cycles = 16, .implementation = load16_impl } },                          // LD BC, IMM16
+        { 0x02, Instruction { .length = 1, .cycles = 8, .implementation = load16_impl } },                           // LD [BC], A
+        { 0x03, Instruction { .length = 1, .cycles = 8, .implementation = inc16_impl } },                            // INC BC
+        { 0x04, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                             // INC B
+        { 0x05, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                             // DEC B
+        { 0x06, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },                       // LD B, IMM8
+        { 0x07, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_circular_clear_zero_impl } },  // RLCA
+        { 0x08, Instruction { .length = 3, .cycles = 20, .implementation = load16_impl } },                          // LD [IMM16], SP
+        { 0x09, Instruction { .length = 1, .cycles = 8, .implementation = add16_impl } },                            // ADD HL, BC
+        { 0x0A, Instruction { .length = 1, .cycles = 8, .implementation = load16_impl } },                           // LD A, [BC]
+        { 0x0B, Instruction { .length = 1, .cycles = 8, .implementation = dec16_impl } },                            // DEC BC
+        { 0x0C, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                             // INC C
+        { 0x0D, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                             // DEC C
+        { 0x0E, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },                       // LD E, IMM8
+        { 0x0F, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_circular_clear_zero_impl } }, // RRCA
+        { 0x10, Instruction { .length = 2, .cycles = 4, .implementation = stop_impl } },                             // STOP 0
+        { 0x11, Instruction { .length = 3, .cycles = 16, .implementation = load16_impl } },                          // LD DE, IMM16
+        { 0x12, Instruction { .length = 1, .cycles = 8, .implementation = load16_impl } },                           // LD [DE], A
+        { 0x13, Instruction { .length = 1, .cycles = 8, .implementation = inc16_impl } },                            // INC DE
+        { 0x14, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                             // INC D
+        { 0x15, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                             // DEC D
+        { 0x16, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },                       // LD D, IMM8
+        { 0x17, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_clear_zero_impl } },           // RLA
+        { 0x18, Instruction { .length = 2, .cycles = 12, .implementation = jump_relative_impl } },                   // JR IMM8
+        { 0x19, Instruction { .length = 1, .cycles = 8, .implementation = add16_impl } },                            // ADD HL, DE
+        { 0x1A, Instruction { .length = 1, .cycles = 8, .implementation = load16_impl } },                           // LD A, [DE]
+        { 0x1B, Instruction { .length = 1, .cycles = 8, .implementation = dec16_impl } },                            // DEC DE
+        { 0x1C, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                             // INC E
+        { 0x1D, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                             // DEC E
+        { 0x1E, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },                       // LD E, IMM8
+        { 0x1F, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_clear_zero_impl } },          // RRA
+        { 0x20, Instruction { .length = 2, .cycles = 8, .implementation = jump_relative_impl } },                    // JR NZ, IMM8 (signed)
+        { 0x21, Instruction { .length = 3, .cycles = 16, .implementation = load16_impl } },                          // LD HL, IMM16
+        { 0x22, Instruction { .length = 1, .cycles = 8, .implementation = load16_impl } },                           // LD [HL+], A
+        { 0x23, Instruction { .length = 1, .cycles = 8, .implementation = inc16_impl } },                            // INC HL
+        { 0x24, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                             // INC H
+        { 0x25, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                             // DEC H
+        { 0x26, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },                       // LD H, IMM8
+        { 0x27, Instruction { .length = 1, .cycles = 4, .implementation = binary_coded_decimal_impl } },             // DAA
+        { 0x28, Instruction { .length = 2, .cycles = 8, .implementation = jump_relative_impl } },                    // JR Z, IMM8
+        { 0x29, Instruction { .length = 1, .cycles = 8, .implementation = add16_impl } },                            // ADD HL, HL
+        { 0x2A, Instruction { .length = 1, .cycles = 8, .implementation = load16_impl } },                           // LD A, [HL+]
+        { 0x2B, Instruction { .length = 1, .cycles = 8, .implementation = dec16_impl } },                            // DEC HL
+        { 0x2C, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                             // INC L
+        { 0x2D, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                             // DEC L
+        { 0x2E, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },                       // LD L, IMM8
+        { 0x2F, Instruction { .length = 1, .cycles = 4, .implementation = complement_impl } },                       // CPL
+        { 0x30, Instruction { .length = 2, .cycles = 8, .implementation = jump_relative_impl } },                    // JR NC, IMM8
+        { 0x31, Instruction { .length = 3, .cycles = 16, .implementation = load16_impl } },                          // LD SP, IMM16
+        { 0x32, Instruction { .length = 1, .cycles = 16, .implementation = load16_impl } },                          // LD SP, IMM16
+        { 0x33, Instruction { .length = 1, .cycles = 8, .implementation = inc16_impl } },                            // INC SP
+        { 0x34, Instruction { .length = 1, .cycles = 12, .implementation = inc8_impl } },                            // INC [HL]
+        { 0x35, Instruction { .length = 1, .cycles = 12, .implementation = dec8_impl } },                            // DEC [HL]
+        { 0x36, Instruction { .length = 2, .cycles = 12, .implementation = load8_imm8_impl } },                      // LD [HL], IMM8
+        { 0x37, Instruction { .length = 1, .cycles = 4, .implementation = set_carry_flag_impl } },                   // SCF
+        { 0x38, Instruction { .length = 2, .cycles = 8, .implementation = jump_relative_impl } },                    // JR C, r8
+        { 0x39, Instruction { .length = 1, .cycles = 8, .implementation = add16_impl } },                            // ADD HL, SP
+        { 0x3A, Instruction { .length = 1, .cycles = 8, .implementation = load16_impl } },                           // LD A, [HL-]
+        { 0x3B, Instruction { .length = 1, .cycles = 8, .implementation = dec16_impl } },                            // DEC SP
+        { 0x3C, Instruction { .length = 1, .cycles = 4, .implementation = inc8_impl } },                             // INC A
+        { 0x3D, Instruction { .length = 1, .cycles = 4, .implementation = dec8_impl } },                             // DEC A
+        { 0x3E, Instruction { .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },                       // LD A, IMM8
+        { 0x3F, Instruction { .length = 1, .cycles = 4, .implementation = flip_carry_flag_impl } },                  // CCF
+        { 0x40, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD B, B
+        { 0x41, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD B, C
+        { 0x42, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD B, D
+        { 0x43, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD B, E
+        { 0x44, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD B, H
+        { 0x45, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD B, L
+        { 0x46, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                         // LD B, [HL]
+        { 0x47, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD B, A
+        { 0x48, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD C, B
+        { 0x49, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD C, C
+        { 0x4A, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD C, D
+        { 0x4B, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD C, E
+        { 0x4C, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD C, H
+        { 0x4D, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD C, L
+        { 0x4E, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                         // LD C, [HL]
+        { 0x4F, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD C, A
+        { 0x50, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD D, B
+        { 0x51, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD D, C
+        { 0x52, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD D, D
+        { 0x53, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD D, E
+        { 0x54, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD D, H
+        { 0x55, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD D, L
+        { 0x56, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                         // LD D, [HL]
+        { 0x57, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD D, A
+        { 0x58, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD E, B
+        { 0x59, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD E, C
+        { 0x5A, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD E, D
+        { 0x5B, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD E, E
+        { 0x5C, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD E, H
+        { 0x5D, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD E, L
+        { 0x5E, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                         // LD E, [HL]
+        { 0x5F, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD E, A
+        { 0x60, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD H, B
+        { 0x61, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD H, C
+        { 0x62, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD H, D
+        { 0x63, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD H, E
+        { 0x64, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD H, H
+        { 0x65, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD H, L
+        { 0x66, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                         // LD H, [HL]
+        { 0x67, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD H, A
+        { 0x68, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD L, B
+        { 0x69, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD L, C
+        { 0x6A, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD L, D
+        { 0x6B, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD L, E
+        { 0x6C, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD L, H
+        { 0x6D, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD L, L
+        { 0x6E, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                         // LD L, [HL]
+        { 0x6F, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD L, A
+        { 0x70, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                         // LD [HL], B
+        { 0x71, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                         // LD [HL], C
+        { 0x72, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                         // LD [HL], D
+        { 0x73, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                         // LD [HL], E
+        { 0x74, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                         // LD [HL], H
+        { 0x75, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                         // LD [HL], L
+        { 0x76, Instruction { .length = 1, .cycles = 4, .implementation = halt_impl } },                             // HALT
+        { 0x77, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                         // LD [HL], A
+        { 0x78, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD A, B
+        { 0x79, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD A, C
+        { 0x7A, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD A, D
+        { 0x7B, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD A, E
+        { 0x7C, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl} },                          // LD A, H
+        { 0x7D, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD A, L
+        { 0x7E, Instruction { .length = 1, .cycles = 8, .implementation = load8_r8_impl } },                         // LD A, [HL]
+        { 0x7F, Instruction { .length = 1, .cycles = 4, .implementation = load8_r8_impl } },                         // LD A, A
+        { 0x80, Instruction { .length = 1, .cycles = 4, .implementation = add8_impl } },                             // ADD A, B
+        { 0x81, Instruction { .length = 1, .cycles = 4, .implementation = add8_impl } },                             // ADD A, C
+        { 0x82, Instruction { .length = 1, .cycles = 4, .implementation = add8_impl } },                             // ADD A, D
+        { 0x83, Instruction { .length = 1, .cycles = 4, .implementation = add8_impl } },                             // ADD A, E
+        { 0x84, Instruction { .length = 1, .cycles = 4, .implementation = add8_impl } },                             // ADD A, H
+        { 0x85, Instruction { .length = 1, .cycles = 4, .implementation = add8_impl } },                             // ADD A, L
+        { 0x86, Instruction { .length = 1, .cycles = 8, .implementation = add8_impl } },                             // ADD A, [HL]
+        { 0x87, Instruction { .length = 1, .cycles = 4, .implementation = add8_impl } },                             // ADD A, A
+        { 0x88, Instruction { .length = 1, .cycles = 4, .implementation = add8_carry_impl } },                       // ADC A, B
+        { 0x89, Instruction { .length = 1, .cycles = 4, .implementation = add8_carry_impl } },                       // ADC A, C
+        { 0x8A, Instruction { .length = 1, .cycles = 4, .implementation = add8_carry_impl } },                       // ADC A, D
+        { 0x8B, Instruction { .length = 1, .cycles = 4, .implementation = add8_carry_impl } },                       // ADC A, E
+        { 0x8C, Instruction { .length = 1, .cycles = 4, .implementation = add8_carry_impl } },                       // ADC A, H
+        { 0x8D, Instruction { .length = 1, .cycles = 4, .implementation = add8_carry_impl } },                       // ADC A, L
+        { 0x8E, Instruction { .length = 1, .cycles = 8, .implementation = add8_carry_impl } },                       // ADC A, [HL]
+        { 0x8F, Instruction { .length = 1, .cycles = 4, .implementation = add8_carry_impl } },                       // ADC A, A
+        { 0x90, Instruction { .length = 1, .cycles = 4, .implementation = sub_impl } },                              // SUB A, B
+        { 0x91, Instruction { .length = 1, .cycles = 4, .implementation = sub_impl } },                              // SUB A, C
+        { 0x92, Instruction { .length = 1, .cycles = 4, .implementation = sub_impl } },                              // SUB A, D
+        { 0x93, Instruction { .length = 1, .cycles = 4, .implementation = sub_impl } },                              // SUB A, E
+        { 0x94, Instruction { .length = 1, .cycles = 4, .implementation = sub_impl } },                              // SUB A, H
+        { 0x95, Instruction { .length = 1, .cycles = 4, .implementation = sub_impl } },                              // SUB A, L
+        { 0x96, Instruction { .length = 1, .cycles = 8, .implementation = sub_impl } },                              // SUB A, [HL]
+        { 0x97, Instruction { .length = 1, .cycles = 4, .implementation = sub_impl } },                              // SUB A, A
+        { 0x98, Instruction { .length = 1, .cycles = 4, .implementation = sub_carry_impl } },                        // SBC A, B
+        { 0x99, Instruction { .length = 1, .cycles = 4, .implementation = sub_carry_impl } },                        // SBC A, C
+        { 0x9A, Instruction { .length = 1, .cycles = 4, .implementation = sub_carry_impl } },                        // SBC A, D
+        { 0x9B, Instruction { .length = 1, .cycles = 4, .implementation = sub_carry_impl } },                        // SBC A, E
+        { 0x9C, Instruction { .length = 1, .cycles = 4, .implementation = sub_carry_impl } },                        // SBC A, H
+        { 0x9D, Instruction { .length = 1, .cycles = 4, .implementation = sub_carry_impl } },                        // SBC A, L
+        { 0x9E, Instruction { .length = 1, .cycles = 8, .implementation = sub_carry_impl } },                        // SBC A, [HL]
+        { 0x9F, Instruction { .length = 1, .cycles = 4, .implementation = sub_carry_impl } },                        // SBC A, A
+        { 0xA0, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                              // AND A, B
+        { 0xA1, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                              // AND A, C
+        { 0xA2, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                              // AND A, D
+        { 0xA3, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                              // AND A, E
+        { 0xA4, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                              // AND A, H
+        { 0xA5, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                              // AND A, L
+        { 0xA6, Instruction { .length = 1, .cycles = 8, .implementation = and_impl } },                              // AND A, [HL]
+        { 0xA7, Instruction { .length = 1, .cycles = 4, .implementation = and_impl } },                              // AND A, A
+        { 0xA8, Instruction { .length = 1, .cycles = 4, .implementation = xor_impl } },                              // XOR A, B
+        { 0xA9, Instruction { .length = 1, .cycles = 4, .implementation = xor_impl } },                              // XOR A, C
+        { 0xAA, Instruction { .length = 1, .cycles = 4, .implementation = xor_impl } },                              // XOR A, D
+        { 0xAB, Instruction { .length = 1, .cycles = 4, .implementation = xor_impl } },                              // XOR A, E
+        { 0xAC, Instruction { .length = 1, .cycles = 4, .implementation = xor_impl } },                              // XOR A, H
+        { 0xAD, Instruction { .length = 1, .cycles = 4, .implementation = xor_impl } },                              // XOR A, L
+        { 0xAE, Instruction { .length = 1, .cycles = 8, .implementation = xor_impl } },                              // XOR [HL]
+        { 0xAF, Instruction { .length = 1, .cycles = 4, .implementation = xor_impl } },                              // XOR A, A
+        { 0xB0, Instruction { .length = 1, .cycles = 4, .implementation = or_impl } },                               // OR B
+        { 0xB1, Instruction { .length = 1, .cycles = 4, .implementation = or_impl }},                                // OR C
+        { 0xB2, Instruction { .length = 1, .cycles = 4, .implementation = or_impl }},                                // OR D
+        { 0xB3, Instruction { .length = 1, .cycles = 4, .implementation = or_impl }},                                // OR E
+        { 0xB4, Instruction { .length = 1, .cycles = 4, .implementation = or_impl }},                                // OR H
+        { 0xB5, Instruction { .length = 1, .cycles = 4, .implementation = or_impl }},                                // OR L
+        { 0xB6, Instruction { .length = 1, .cycles = 8, .implementation = or_impl }},                                // OR [HL]
+        { 0xB7, Instruction { .length = 1, .cycles = 4, .implementation = or_impl }},                                // OR A
+        { 0xB8, Instruction { .length = 1, .cycles = 4, .implementation = compare_impl } },                          // CP A, B
+        { 0xB9, Instruction { .length = 1, .cycles = 4, .implementation = compare_impl } },                          // CP A, C
+        { 0xBA, Instruction { .length = 1, .cycles = 4, .implementation = compare_impl } },                          // CP A, D
+        { 0xBB, Instruction { .length = 1, .cycles = 4, .implementation = compare_impl } },                          // CP A, E
+        { 0xBC, Instruction { .length = 1, .cycles = 4, .implementation = compare_impl } },                          // CP A, H
+        { 0xBD, Instruction { .length = 1, .cycles = 4, .implementation = compare_impl } },                          // CP A, L
+        { 0xBE, Instruction { .length = 1, .cycles = 8, .implementation = compare_impl } },                          // CP A, [HL]
+        { 0xBF, Instruction { .length = 1, .cycles = 4, .implementation = compare_impl } },                          // CP A, A
+        { 0xC0, Instruction { .length = 1, .cycles = 8, .implementation = ret_impl } },                              // RET NZ
+        { 0xC1, Instruction { .length = 1, .cycles = 12, .implementation = pop_impl } },                             // POP BC
+        { 0xC2, Instruction { .length = 3, .cycles = 12, .implementation = jump_absolute_impl } },                   // JP NZ, IMM16
+        { 0xC3, Instruction { .length = 0, .cycles = 12, .implementation = jump_absolute_impl } },                   // JP IMM16
+        { 0xC4, Instruction { .length = 3, .cycles = 12, .implementation = call_impl } },                            // CALL NZ, IMM16
+        { 0xC5, Instruction { .length = 1, .cycles = 16, .implementation = push_impl } },                            // PUSH BC
+        { 0xC6, Instruction { .length = 2, .cycles = 8, .implementation = add8_impl } },                             // ADD A, IMM8
+        { 0xC7, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },                         // RST 00H
+        { 0xC8, Instruction { .length = 1, .cycles = 8, .implementation = ret_impl } },                              // RET Z
+        { 0xC9, Instruction { .length = 0, .cycles = 16, .implementation = ret_impl } },                             // RET
+        { 0xCA, Instruction { .length = 3, .cycles = 12, .implementation = jump_absolute_impl } },                   // JP Z, IMM16
+        { 0xCB, Instruction { .length = 1, .cycles = 4, .implementation = enable_prefix } },                         // PREFIX
+        { 0xCC, Instruction { .length = 3, .cycles = 12, .implementation = call_impl } },                            // CALL Z, IMM16
+        { 0xCD, Instruction { .length = 0, .cycles = 24, .implementation = call_impl } },                            // CALL IMM16
+        { 0xCE, Instruction { .length = 2, .cycles = 8, .implementation = add8_carry_impl } },                       // ADC A, IMM8
+        { 0xCF, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },                         // RST 08H
+        { 0xD0, Instruction { .length = 1, .cycles = 8, .implementation = ret_impl } },                              // RET NC
+        { 0xD1, Instruction { .length = 1, .cycles = 12, .implementation = pop_impl } },                             // POP DE
+        { 0xD2, Instruction { .length = 3, .cycles = 12, .implementation = jump_absolute_impl } },                   // JP NC, IMM16
         // 0xD3 is not a valid instruction
-        { 0xD4, Instruction { .length = 3, .cycles = 12, .implementation = call_impl } },                           // CALL NC, IMM16
-        { 0xD5, Instruction { .length = 1, .cycles = 16, .implementation = push_impl } },                           // PUSH DE
-        { 0xD6, Instruction { .length = 2, .cycles = 8, .implementation = sub_impl } },                             // SUB IMM8
-        { 0xD7, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },                        // RST 10H
-        { 0xD8, Instruction { .length = 1, .cycles = 8, .implementation = ret_impl } },                             // RET C
-        { 0xD9, Instruction { .length = 0, .cycles = 16, .implementation = ret_interrupt_impl } },                  // RETI
-        { 0xDA, Instruction { .length = 3, .cycles = 12, .implementation = jump_absolute_impl } },                  // JP C, IMM16
+        { 0xD4, Instruction { .length = 3, .cycles = 12, .implementation = call_impl } },                            // CALL NC, IMM16
+        { 0xD5, Instruction { .length = 1, .cycles = 16, .implementation = push_impl } },                            // PUSH DE
+        { 0xD6, Instruction { .length = 2, .cycles = 8, .implementation = sub_impl } },                              // SUB IMM8
+        { 0xD7, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },                         // RST 10H
+        { 0xD8, Instruction { .length = 1, .cycles = 8, .implementation = ret_impl } },                              // RET C
+        { 0xD9, Instruction { .length = 0, .cycles = 16, .implementation = ret_interrupt_impl } },                   // RETI
+        { 0xDA, Instruction { .length = 3, .cycles = 12, .implementation = jump_absolute_impl } },                   // JP C, IMM16
         // 0xDB is not a valid instruction
-        { 0xDC, Instruction { .length = 3, .cycles = 12, .implementation = call_impl } },                           // CALL C, IMM16
+        { 0xDC, Instruction { .length = 3, .cycles = 12, .implementation = call_impl } },                            // CALL C, IMM16
         // 0xDD is not a valid instruction
-        { 0xDE, Instruction { .length = 2, .cycles = 8, .implementation = sub_carry_impl } },                       // SBC A, IMM8
-        { 0xDF, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },                        // RST 18H
-        { 0xE0, Instruction { .length = 2, .cycles = 12, .implementation = load8_high_impl } },                     // LDH [IMM8], A
-        { 0xE1, Instruction { .length = 1, .cycles = 12, .implementation = pop_impl } },                            // POP HL
-        { 0xE2, Instruction { .length = 1, .cycles = 8, .implementation = load8_high_impl } },                      // LDH [C], A
+        { 0xDE, Instruction { .length = 2, .cycles = 8, .implementation = sub_carry_impl } },                        // SBC A, IMM8
+        { 0xDF, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },                         // RST 18H
+        { 0xE0, Instruction { .length = 2, .cycles = 12, .implementation = load8_high_impl } },                      // LDH [IMM8], A
+        { 0xE1, Instruction { .length = 1, .cycles = 12, .implementation = pop_impl } },                             // POP HL
+        { 0xE2, Instruction { .length = 1, .cycles = 8, .implementation = load8_high_impl } },                       // LDH [C], A
         // 0xE3 is not a valid instruction
         // 0xE4 is not a valid instruction
-        { 0xE5, Instruction { .length = 1, .cycles = 16, .implementation = push_impl} },                            // PUSH HL
-        { 0xE6, Instruction { .length = 2, .cycles = 8, .implementation =  and_impl } },                            // AND IMM8
-        { 0xE7, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },                        // RST 20H
-        { 0xE8, Instruction { .length = 2, .cycles = 16, .implementation = add_sp_impl } },                         // ADD SP, IMM8
-        { 0xE9, Instruction { .length = 0, .cycles = 4, .implementation = jump_absolute_impl } },                   // JP HL
-        { 0xEA, Instruction { .length = 3, .cycles = 16, .implementation = load16_imm16mem_impl } },                // LD [IMM16], A
+        { 0xE5, Instruction { .length = 1, .cycles = 16, .implementation = push_impl} },                             // PUSH HL
+        { 0xE6, Instruction { .length = 2, .cycles = 8, .implementation =  and_impl } },                             // AND IMM8
+        { 0xE7, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },                         // RST 20H
+        { 0xE8, Instruction { .length = 2, .cycles = 16, .implementation = add_sp_impl } },                          // ADD SP, IMM8
+        { 0xE9, Instruction { .length = 0, .cycles = 4, .implementation = jump_absolute_impl } },                    // JP HL
+        { 0xEA, Instruction { .length = 3, .cycles = 16, .implementation = load16_imm16mem_impl } },                 // LD [IMM16], A
         // 0xEB is not a valid instruction
-        { 0xEC, Instruction { .length = 3, .cycles = 12, .implementation = call_impl } },                           // CALL C, IMM16
+        { 0xEC, Instruction { .length = 3, .cycles = 12, .implementation = call_impl } },                            // CALL C, IMM16
         // 0xED is not a valid instruction
-        { 0xEE, Instruction { .length = 2, .cycles = 8, .implementation = xor_impl } },                             // XOR IMM8
-        { 0xEF, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },                        // RST 28H
-        { 0xF0, Instruction { .length = 2, .cycles = 12, .implementation = load8_high_impl } },                     // LDH A, IMM8
-        { 0xF1, Instruction { .length = 1, .cycles = 12, .implementation = pop_impl} },                             // POP AF
-        { 0xF2, Instruction { .length = 1, .cycles = 8, .implementation = load8_high_impl } },                      // LD A, [C]
-        { 0xF3, Instruction { .length = 1, .cycles = 4, .implementation = disable_master_interrupt } },             // DI
+        { 0xEE, Instruction { .length = 2, .cycles = 8, .implementation = xor_impl } },                              // XOR IMM8
+        { 0xEF, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },                         // RST 28H
+        { 0xF0, Instruction { .length = 2, .cycles = 12, .implementation = load8_high_impl } },                      // LDH A, IMM8
+        { 0xF1, Instruction { .length = 1, .cycles = 12, .implementation = pop_impl} },                              // POP AF
+        { 0xF2, Instruction { .length = 1, .cycles = 8, .implementation = load8_high_impl } },                       // LD A, [C]
+        { 0xF3, Instruction { .length = 1, .cycles = 4, .implementation = disable_master_interrupt } },              // DI
         // 0xF4 is not a valid instruction
-        { 0xF5, Instruction { .length = 1, .cycles = 16, .implementation = push_impl } },                           // PUSH AF
-        { 0xF6, Instruction { .length = 2, .cycles = 8, .implementation = or_impl } },                              // OR IMM8
-        { 0xF7, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },                        // RST 30H
-        { 0xF8, Instruction { .length = 2, .cycles = 12, .implementation = load_hl_sp_r8 } },                       // LD HL, SP + IMM8
-        { 0xF9, Instruction { .length = 1, .cycles = 8, .implementation = load_sp_hl } },                           // LD SP, HL
-        { 0xFA, Instruction { .length = 3, .cycles = 16, .implementation = load16_imm16mem_impl } },                // LD A, [IMM16]
-        { 0xFB, Instruction { .length = 1, .cycles = 4, .implementation = enable_master_interrupt } },              // EI
+        { 0xF5, Instruction { .length = 1, .cycles = 16, .implementation = push_impl } },                            // PUSH AF
+        { 0xF6, Instruction { .length = 2, .cycles = 8, .implementation = or_impl } },                               // OR IMM8
+        { 0xF7, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },                         // RST 30H
+        { 0xF8, Instruction { .length = 2, .cycles = 12, .implementation = load_hl_sp_r8 } },                        // LD HL, SP + IMM8
+        { 0xF9, Instruction { .length = 1, .cycles = 8, .implementation = load_sp_hl } },                            // LD SP, HL
+        { 0xFA, Instruction { .length = 3, .cycles = 16, .implementation = load16_imm16mem_impl } },                 // LD A, [IMM16]
+        { 0xFB, Instruction { .length = 1, .cycles = 4, .implementation = enable_master_interrupt } },               // EI
         // 0xFC is not a valid instruction
         // 0xFD is not a valid instruction
-        { 0xFE, Instruction { .length = 2, .cycles = 8, .implementation = compare_impl } },                         // CP A, IMM8
-        { 0xFF, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },                        // RST 38H
+        { 0xFE, Instruction { .length = 2, .cycles = 8, .implementation = compare_impl } },                          // CP A, IMM8
+        { 0xFF, Instruction { .length = 0, .cycles = 16, .implementation = restart_impl } },                         // RST 38H
     };
 
     std::uint8_t bit_impl(CPU& cpu) {
@@ -1369,114 +1378,130 @@ namespace sickboy {
 
     // Instruction length and cycles here do NOT contain the length and cycle count of the prefix instruction itself.
     std::unordered_map<std::uint8_t, Instruction> CPU::prefixed_instruction_set = {
-        { 0x10, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_set_zero_impl } },   // RL B
-        { 0x11, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_set_zero_impl } },   // RL C
-        { 0x12, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_set_zero_impl } },   // RL D
-        { 0x13, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_set_zero_impl } },   // RL E
-        { 0x14, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_set_zero_impl } },   // RL H
-        { 0x15, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_set_zero_impl } },   // RL L
-        { 0x16, Instruction { .length = 1, .cycles = 12, .implementation = rotate_left_set_zero_impl } },  // RL [HL]
-        { 0x17, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_set_zero_impl } },   // RL A
-        { 0x18, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_set_zero_impl } },  // RR B
-        { 0x19, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_set_zero_impl } },  // RR C
-        { 0x1A, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_set_zero_impl } },  // RR D
-        { 0x1B, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_set_zero_impl } },  // RR E
-        { 0x1C, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_set_zero_impl } },  // RR H
-        { 0x1D, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_set_zero_impl } },  // RR L
-        { 0x1E, Instruction { .length = 1, .cycles = 12, .implementation = rotate_right_set_zero_impl } }, // RR [HL]
-        { 0x1F, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_set_zero_impl } },  // RR A
-        { 0x20, Instruction { .length = 1, .cycles = 4, .implementation = shift_left_impl } },             // SLA B
-        { 0x21, Instruction { .length = 1, .cycles = 4, .implementation = shift_left_impl } },             // SLA C
-        { 0x22, Instruction { .length = 1, .cycles = 4, .implementation = shift_left_impl } },             // SLA D
-        { 0x23, Instruction { .length = 1, .cycles = 4, .implementation = shift_left_impl } },             // SLA E
-        { 0x24, Instruction { .length = 1, .cycles = 4, .implementation = shift_left_impl } },             // SLA H
-        { 0x25, Instruction { .length = 1, .cycles = 4, .implementation = shift_left_impl } },             // SLA L
-        { 0x26, Instruction { .length = 1, .cycles = 12, .implementation = shift_left_impl } },            // SLA [HL]
-        { 0x27, Instruction { .length = 1, .cycles = 4, .implementation = shift_left_impl } },             // SLA A
-        { 0x28, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_no_clear_impl } },   // SRA B
-        { 0x29, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_no_clear_impl } },   // SRA C
-        { 0x2A, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_no_clear_impl } },   // SRA D
-        { 0x2B, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_no_clear_impl } },   // SRA E
-        { 0x2C, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_no_clear_impl } },   // SRA H
-        { 0x2D, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_no_clear_impl } },   // SRA L
-        { 0x2E, Instruction { .length = 1, .cycles = 12, .implementation = shift_right_no_clear_impl } },  // SRA [HL]
-        { 0x2F, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_no_clear_impl } },   // SRA A
-        { 0x33, Instruction { .length = 1, .cycles = 4, .implementation = swap_impl } },                   // SWAP E
-        { 0x37, Instruction { .length = 1, .cycles = 4, .implementation = swap_impl } },                   // SWAP A
-        { 0x38, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_clear_impl } },      // SRL B
-        { 0x39, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_clear_impl } },      // SRL C
-        { 0x3A, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_clear_impl } },      // SRL D
-        { 0x3B, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_clear_impl } },      // SRL E
-        { 0x3C, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_clear_impl } },      // SRL H
-        { 0x3D, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_clear_impl } },      // SRL L
-        { 0x3E, Instruction { .length = 1, .cycles = 12, .implementation = shift_right_clear_impl } },     // SRL [HL]
-        { 0x3F, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_clear_impl } },      // SRL A
-        { 0x40, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 0, B
-        { 0x41, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 0, C
-        { 0x42, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 0, D
-        { 0x43, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 0, E
-        { 0x44, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 0, H
-        { 0x45, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 0, L
-        { 0x46, Instruction { .length = 1, .cycles = 12, .implementation = bit_impl } },                   // BIT 0, [HL]
-        { 0x47, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 0, A
-        { 0x48, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 1, B
-        { 0x49, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 1, C
-        { 0x4A, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 1, D
-        { 0x4B, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 1, E
-        { 0x4C, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 1, H
-        { 0x4D, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 1, L
-        { 0x4E, Instruction { .length = 1, .cycles = 12, .implementation = bit_impl } },                   // BIT 1, [HL]
-        { 0x4F, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 1, A
-        { 0x50, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 2, B
-        { 0x51, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 2, C
-        { 0x52, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 2, D
-        { 0x53, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 2, E
-        { 0x54, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 2, H
-        { 0x55, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 2, L
-        { 0x56, Instruction { .length = 1, .cycles = 12, .implementation = bit_impl } },                   // BIT 2, [HL]
-        { 0x57, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 2, A
-        { 0x58, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 3, B
-        { 0x59, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 3, C
-        { 0x5A, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 3, D
-        { 0x5B, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 3, E
-        { 0x5C, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 3, H
-        { 0x5D, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 3, L
-        { 0x5E, Instruction { .length = 1, .cycles = 12, .implementation = bit_impl } },                   // BIT 3, [HL]
-        { 0x5F, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 3, A
-        { 0x60, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 4, B
-        { 0x61, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 4, C
-        { 0x62, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 4, D
-        { 0x63, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 4, E
-        { 0x64, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 4, H
-        { 0x65, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 4, L
-        { 0x66, Instruction { .length = 1, .cycles = 12, .implementation = bit_impl } },                   // BIT 4, [HL]
-        { 0x67, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 4, A
-        { 0x68, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 5, B
-        { 0x69, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 5, C
-        { 0x6A, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 5, D
-        { 0x6B, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 5, E
-        { 0x6C, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 5, H
-        { 0x6D, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 5, L
-        { 0x6E, Instruction { .length = 1, .cycles = 12, .implementation = bit_impl } },                   // BIT 5, [HL]
-        { 0x6F, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 5, A
-        { 0x70, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 6, B
-        { 0x71, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 6, C
-        { 0x72, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 6, D
-        { 0x73, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 6, E
-        { 0x74, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 6, H
-        { 0x75, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 6, L
-        { 0x76, Instruction { .length = 1, .cycles = 12, .implementation = bit_impl } },                   // BIT 6, [HL]
-        { 0x77, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 6, A
-        { 0x78, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 7, B
-        { 0x79, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 7, C
-        { 0x7A, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 7, D
-        { 0x7B, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 7, E
-        { 0x7C, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 7, H
-        { 0x7D, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 7, L
-        { 0x7E, Instruction { .length = 1, .cycles = 12, .implementation = bit_impl } },                   // BIT 7, [HL]
-        { 0x7F, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                    // BIT 7, A
-        { 0x86, Instruction { .length = 1, .cycles = 12, .implementation = reset_impl } },                 // RES 0, [HL]
-        { 0x87, Instruction { .length = 1, .cycles = 4, .implementation = reset_impl } },                  // RES 0, A
+        { 0x00, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_circular_set_zero_impl } },  // RLC B
+        { 0x01, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_circular_set_zero_impl } },  // RLC C
+        { 0x02, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_circular_set_zero_impl } },  // RLC D
+        { 0x03, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_circular_set_zero_impl } },  // RLC E
+        { 0x04, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_circular_set_zero_impl } },  // RLC H
+        { 0x05, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_circular_set_zero_impl } },  // RLC L
+        { 0x06, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_circular_set_zero_impl } },  // RLC [HL]
+        { 0x07, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_circular_set_zero_impl } },  // RLC A
+        { 0x08, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_circular_set_zero_impl } }, // RRC B
+        { 0x09, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_circular_set_zero_impl } }, // RRC C
+        { 0x0A, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_circular_set_zero_impl } }, // RRC D
+        { 0x0B, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_circular_set_zero_impl } }, // RRC E
+        { 0x0C, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_circular_set_zero_impl } }, // RRC H
+        { 0x0D, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_circular_set_zero_impl } }, // RRC L
+        { 0x0E, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_circular_set_zero_impl } }, // RRC [HL]
+        { 0x0F, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_circular_set_zero_impl } }, // RRC A
+        { 0x10, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_set_zero_impl } },           // RL B
+        { 0x11, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_set_zero_impl } },           // RL C
+        { 0x12, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_set_zero_impl } },           // RL D
+        { 0x13, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_set_zero_impl } },           // RL E
+        { 0x14, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_set_zero_impl } },           // RL H
+        { 0x15, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_set_zero_impl } },           // RL L
+        { 0x16, Instruction { .length = 1, .cycles = 12, .implementation = rotate_left_set_zero_impl } },          // RL [HL]
+        { 0x17, Instruction { .length = 1, .cycles = 4, .implementation = rotate_left_set_zero_impl } },           // RL A
+        { 0x18, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_set_zero_impl } },          // RR B
+        { 0x19, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_set_zero_impl } },          // RR C
+        { 0x1A, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_set_zero_impl } },          // RR D
+        { 0x1B, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_set_zero_impl } },          // RR E
+        { 0x1C, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_set_zero_impl } },          // RR H
+        { 0x1D, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_set_zero_impl } },          // RR L
+        { 0x1E, Instruction { .length = 1, .cycles = 12, .implementation = rotate_right_set_zero_impl } },         // RR [HL]
+        { 0x1F, Instruction { .length = 1, .cycles = 4, .implementation = rotate_right_set_zero_impl } },          // RR A
+        { 0x20, Instruction { .length = 1, .cycles = 4, .implementation = shift_left_impl } },                     // SLA B
+        { 0x21, Instruction { .length = 1, .cycles = 4, .implementation = shift_left_impl } },                     // SLA C
+        { 0x22, Instruction { .length = 1, .cycles = 4, .implementation = shift_left_impl } },                     // SLA D
+        { 0x23, Instruction { .length = 1, .cycles = 4, .implementation = shift_left_impl } },                     // SLA E
+        { 0x24, Instruction { .length = 1, .cycles = 4, .implementation = shift_left_impl } },                     // SLA H
+        { 0x25, Instruction { .length = 1, .cycles = 4, .implementation = shift_left_impl } },                     // SLA L
+        { 0x26, Instruction { .length = 1, .cycles = 12, .implementation = shift_left_impl } },                    // SLA [HL]
+        { 0x27, Instruction { .length = 1, .cycles = 4, .implementation = shift_left_impl } },                     // SLA A
+        { 0x28, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_no_clear_impl } },           // SRA B
+        { 0x29, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_no_clear_impl } },           // SRA C
+        { 0x2A, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_no_clear_impl } },           // SRA D
+        { 0x2B, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_no_clear_impl } },           // SRA E
+        { 0x2C, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_no_clear_impl } },           // SRA H
+        { 0x2D, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_no_clear_impl } },           // SRA L
+        { 0x2E, Instruction { .length = 1, .cycles = 12, .implementation = shift_right_no_clear_impl } },          // SRA [HL]
+        { 0x2F, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_no_clear_impl } },           // SRA A
+        { 0x33, Instruction { .length = 1, .cycles = 4, .implementation = swap_impl } },                           // SWAP E
+        { 0x37, Instruction { .length = 1, .cycles = 4, .implementation = swap_impl } },                           // SWAP A
+        { 0x38, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_clear_impl } },              // SRL B
+        { 0x39, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_clear_impl } },              // SRL C
+        { 0x3A, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_clear_impl } },              // SRL D
+        { 0x3B, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_clear_impl } },              // SRL E
+        { 0x3C, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_clear_impl } },              // SRL H
+        { 0x3D, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_clear_impl } },              // SRL L
+        { 0x3E, Instruction { .length = 1, .cycles = 12, .implementation = shift_right_clear_impl } },             // SRL [HL]
+        { 0x3F, Instruction { .length = 1, .cycles = 4, .implementation = shift_right_clear_impl } },              // SRL A
+        { 0x40, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 0, B
+        { 0x41, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 0, C
+        { 0x42, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 0, D
+        { 0x43, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 0, E
+        { 0x44, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 0, H
+        { 0x45, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 0, L
+        { 0x46, Instruction { .length = 1, .cycles = 12, .implementation = bit_impl } },                           // BIT 0, [HL]
+        { 0x47, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 0, A
+        { 0x48, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 1, B
+        { 0x49, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 1, C
+        { 0x4A, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 1, D
+        { 0x4B, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 1, E
+        { 0x4C, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 1, H
+        { 0x4D, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 1, L
+        { 0x4E, Instruction { .length = 1, .cycles = 12, .implementation = bit_impl } },                           // BIT 1, [HL]
+        { 0x4F, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 1, A
+        { 0x50, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 2, B
+        { 0x51, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 2, C
+        { 0x52, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 2, D
+        { 0x53, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 2, E
+        { 0x54, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 2, H
+        { 0x55, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 2, L
+        { 0x56, Instruction { .length = 1, .cycles = 12, .implementation = bit_impl } },                           // BIT 2, [HL]
+        { 0x57, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 2, A
+        { 0x58, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 3, B
+        { 0x59, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 3, C
+        { 0x5A, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 3, D
+        { 0x5B, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 3, E
+        { 0x5C, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 3, H
+        { 0x5D, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 3, L
+        { 0x5E, Instruction { .length = 1, .cycles = 12, .implementation = bit_impl } },                           // BIT 3, [HL]
+        { 0x5F, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 3, A
+        { 0x60, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 4, B
+        { 0x61, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 4, C
+        { 0x62, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 4, D
+        { 0x63, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 4, E
+        { 0x64, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 4, H
+        { 0x65, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 4, L
+        { 0x66, Instruction { .length = 1, .cycles = 12, .implementation = bit_impl } },                           // BIT 4, [HL]
+        { 0x67, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 4, A
+        { 0x68, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 5, B
+        { 0x69, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 5, C
+        { 0x6A, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 5, D
+        { 0x6B, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 5, E
+        { 0x6C, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 5, H
+        { 0x6D, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 5, L
+        { 0x6E, Instruction { .length = 1, .cycles = 12, .implementation = bit_impl } },                           // BIT 5, [HL]
+        { 0x6F, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 5, A
+        { 0x70, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 6, B
+        { 0x71, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 6, C
+        { 0x72, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 6, D
+        { 0x73, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 6, E
+        { 0x74, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 6, H
+        { 0x75, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 6, L
+        { 0x76, Instruction { .length = 1, .cycles = 12, .implementation = bit_impl } },                           // BIT 6, [HL]
+        { 0x77, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 6, A
+        { 0x78, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 7, B
+        { 0x79, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 7, C
+        { 0x7A, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 7, D
+        { 0x7B, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 7, E
+        { 0x7C, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 7, H
+        { 0x7D, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 7, L
+        { 0x7E, Instruction { .length = 1, .cycles = 12, .implementation = bit_impl } },                           // BIT 7, [HL]
+        { 0x7F, Instruction { .length = 1, .cycles = 4, .implementation = bit_impl } },                            // BIT 7, A
+        { 0x86, Instruction { .length = 1, .cycles = 12, .implementation = reset_impl } },                         // RES 0, [HL]
+        { 0x87, Instruction { .length = 1, .cycles = 4, .implementation = reset_impl } },                          // RES 0, A
     };
 
 }
