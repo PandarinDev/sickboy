@@ -961,6 +961,7 @@ namespace sickboy {
         std::uint8_t offset = 0;
         std::uint8_t value = cpu.registers.a();
         bool addition = !cpu.registers.get_flag_n();
+        bool carry_value = false;
         // If the lower nibble is incorrect or there was a half carry adjust lower digit
         if ((addition && (value & 0x0F) > 0x09) || cpu.registers.get_flag_h()) {
             offset |= 0x06;
@@ -968,13 +969,14 @@ namespace sickboy {
         // If the value exceeds max digit or there was a carry adjust higher digit
         if ((addition && value > 0x99) || cpu.registers.get_flag_c()) {
             offset |= 0x60;
+            carry_value = true;
         }
         cpu.registers.a() += addition ? offset : -offset;
 
         std::uint8_t final_value = cpu.registers.a();
         cpu.registers.set_flag_z(final_value == 0);
         cpu.registers.set_flag_h(0);
-        cpu.registers.set_flag_c(final_value > 0x99);
+        cpu.registers.set_flag_c(carry_value);
 
         return 0;
     }
