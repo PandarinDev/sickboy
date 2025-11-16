@@ -593,9 +593,6 @@ namespace sickboy {
 
     std::uint8_t push_impl(CPU& cpu) {
         auto instruction = cpu.memory->read(cpu.registers.pc);
-        if (instruction == 0xF5) {
-            std::cout << "whachadoin" << std::endl;
-        }
         std::uint8_t reg_code = (instruction & 0b00110000) >> 4;
         auto reg = r16stk_lookup(cpu, reg_code);
         push_value(cpu, *reg);
@@ -694,18 +691,14 @@ namespace sickboy {
 
     std::uint8_t pop_impl(CPU& cpu) {
         auto instruction = cpu.memory->read(cpu.registers.pc);
-        /*
-        if (cpu.registers.pc == 0xC31E &&
-            cpu.registers.b() == 0x13 &&
-            cpu.registers.c() == 0x01 &&
-            cpu.registers.d() == 0x12) {
-            std::cout << "zez" << std::endl;
-        }
-        */
         std::uint8_t reg_code = (instruction & 0b00110000) >> 4;
         auto reg = r16stk_lookup(cpu, reg_code);
         *reg = pop_value(cpu) << 0;
         *reg |= pop_value(cpu) << 8;
+        // If we are POPing to AF mask out the lowest 4 bits
+        if (reg == &cpu.registers.af) {
+            *reg &= 0xFFF0;
+        }
 
         // The only case when we are setting flags is when we are popping AF,
         // because then of course we are restoring values to the F register.
