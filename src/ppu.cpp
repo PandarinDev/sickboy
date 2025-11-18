@@ -263,13 +263,13 @@ namespace sickboy {
             memory->copy_from(OAM_START_ADDR + i * object_entry_size, reinterpret_cast<std::uint8_t*>(&object_entry), object_entry_size);
 
             // Skip the object if it does not intersect the current scanline
-            std::int16_t end_y = static_cast<std::int16_t>(object_entry.y);
-            // Note that since end_y and end_x are inclusive we are subtracting 1 less
+            std::int16_t start_y = static_cast<std::int16_t>(object_entry.y) - 16;
+            // Note that since start_y and start_x are inclusive we are adding 1 less
             // pixel (7/15) instead of 8/16 in order to get one tile worth of pixels.
-            // TODO: Change this -7 to -7/-15 depending on OBJ size in the control byte
-            std::int16_t start_y = end_y - 7;
-            std::int16_t end_x = static_cast<std::int16_t>(object_entry.x);
-            std::int16_t start_x = end_x - 7;
+            // TODO: Change this +7 to +7/+15 depending on OBJ size in the control byte
+            std::int16_t end_y = start_y + 7;
+            std::int16_t start_x = static_cast<std::int16_t>(object_entry.x) - 8;
+            std::int16_t end_x = start_x + 7;
             if (start_y > current_scanline ||
                 end_y < current_scanline ||
                 start_x > current_column ||
@@ -306,11 +306,11 @@ namespace sickboy {
         bool flip_vertically = (object.object.flags & 0b01000000) != 0;
         bool flip_horizontally = (object.object.flags & 0b00100000) != 0;
         std::uint16_t row_colors = object.tile[flip_vertically
-            ? (7 - (object.end_y - current_scanline))
-            : (object.end_y - current_scanline)];
+            ? (7 - (current_scanline - object.start_y))
+            : (current_scanline - object.start_y)];
         std::uint8_t color_idx = get_tile_color_index(row_colors, flip_horizontally
-            ? static_cast<std::uint8_t>(7 - (object.end_x - current_column))
-            : static_cast<std::uint8_t>(object.end_x - current_column));
+            ? static_cast<std::uint8_t>(7 - (current_column - object.start_x))
+            : static_cast<std::uint8_t>(current_column - object.start_x));
         std::uint8_t palette_idx = (object.object.flags & 0b00010000) >> 4;
         bool draw_below_background = (object.object.flags & 0b10000000) != 0;
         // TODO: This is not entirely accurate - we should collect intersecting objects
