@@ -626,10 +626,13 @@ namespace sickboy {
     }
 
     std::uint8_t rotate_right_circular_impl(CPU& cpu, bool set_zero_flag) {
+        auto instruction = cpu.memory->read(cpu.registers.pc);
+        std::uint8_t reg_code = instruction & 0b111;
+        std::uint8_t old_value = r8_get_value(cpu, reg_code);
         // Circular rotate puts the 0th bit into the 7th bit instead of carry
-        std::uint8_t rotated_bit = cpu.registers.a() & 0b1;
-        std::uint8_t result = (cpu.registers.a() >> 1) | (rotated_bit << 7);
-        cpu.registers.a() = result;
+        std::uint8_t rotated_bit = old_value & 0b1;
+        std::uint8_t result = (old_value >> 1) | (rotated_bit << 7);
+        r8_set_value(cpu, reg_code, result);
 
         cpu.registers.set_flag_z(set_zero_flag ? (result == 0) : false);
         cpu.registers.set_flag_n(false);
