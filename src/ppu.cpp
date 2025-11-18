@@ -309,8 +309,8 @@ namespace sickboy {
             ? (7 - (object.end_y - current_scanline))
             : (object.end_y - current_scanline)];
         std::uint8_t color_idx = get_tile_color_index(row_colors, flip_horizontally
-            ? (7 - (object.end_x - current_column))
-            : (object.end_x - current_column));
+            ? static_cast<std::uint8_t>(7 - (object.end_x - current_column))
+            : static_cast<std::uint8_t>(object.end_x - current_column));
         std::uint8_t palette_idx = (object.object.flags & 0b00010000) >> 4;
         bool draw_below_background = (object.object.flags & 0b10000000) != 0;
         // TODO: This is not entirely accurate - we should collect intersecting objects

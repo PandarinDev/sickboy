@@ -256,7 +256,7 @@ namespace sickboy {
                 (cpu.memory->read(cpu.registers.pc + 2) << 8) |
                 (cpu.memory->read(cpu.registers.pc + 1) << 0);
             cpu.memory->write(address, cpu.registers.sp & 0xFF);
-            cpu.memory->write(address, (cpu.registers.sp & 0xFF00) >> 8);
+            cpu.memory->write(address + 1, (cpu.registers.sp & 0xFF00) >> 8);
         }
         else throw std::runtime_error("Unimplemented load type in load16_impl.");
 
@@ -869,7 +869,7 @@ namespace sickboy {
     std::uint8_t add_sp_impl(CPU& cpu) {
         std::uint16_t first = cpu.registers.sp;
         // Important: For SP add the second operand is a signed integer
-        std::int16_t second = static_cast<std::int16_t>(cpu.memory->read(cpu.registers.pc + 1));
+        std::int8_t second = static_cast<std::int8_t>(cpu.memory->read(cpu.registers.pc + 1));
         std::uint16_t result = first + second;
         cpu.registers.sp = result;
 
