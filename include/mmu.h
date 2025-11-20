@@ -1,6 +1,9 @@
 #pragma once
 
+#include "cartridge.h"
+
 #include <array>
+#include <memory>
 #include <cstdint>
 
 namespace sickboy {
@@ -19,21 +22,19 @@ namespace sickboy {
         void copy_to_boot_rom(const std::uint8_t* data);
         void set_boot_rom_enabled(bool on);
         bool poll_interrupt_request();
+        void set_cartridge(std::unique_ptr<Cartridge> cartridge);
 
     private:
 
-        enum class BankingMode : std::uint8_t {
-            SIMPLE = 0,
-            ADVANCED = 1
-        };
-
+        std::unique_ptr<Cartridge> cartridge;
+        // TODO: This is inaccurate and inefficient as this RAM size currently accounts
+        // for cartridge data and cartridge RAM as well. This should be split up into
+        // multiple arrays and memory mapping logic should choose the correct array
+        // depending on the address range.
         std::array<std::uint8_t, 0xFFFF + 1> ram;
         std::array<std::uint8_t, 0x00FF + 1> boot_rom;
         bool boot_rom_enabled;
         bool had_interrupt_request;
-        std::uint8_t bank_lower;
-        std::uint8_t bank_upper;
-        BankingMode bank_mode;
 
     };
 

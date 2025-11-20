@@ -1,5 +1,6 @@
 #include "system.h"
 #include "utils.h"
+#include "cartridge.h"
 
 #include <iostream>
 
@@ -18,14 +19,9 @@ namespace sickboy {
 
         // Load cartridge data
         {
-            static constexpr auto max_cartridge_size = 0x8000;
             auto cartridge_contents = FileUtils::read_binary(cartridge_path);
-            auto cartridge_size = cartridge_contents.size();
-            if (cartridge_size > max_cartridge_size) {
-                cartridge_size = max_cartridge_size;
-                std::cerr << "WARNING: Cartridge data is getting truncated because it is too large." << std::endl;
-            }
-            memory->copy_to(0, cartridge_contents.data(), cartridge_size);
+            auto cartridge = CartridgeUtils::create_cartridge(cartridge_contents);
+            memory->set_cartridge(std::move(cartridge));
         }
     }
 
