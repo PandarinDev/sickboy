@@ -34,6 +34,13 @@ namespace sickboy {
         static constexpr std::uint16_t OAM_DMA_COPY_ADDRESS = 0xFF46;
         static constexpr std::uint16_t INTERRUPT_REQUEST_ADDRESS = 0xFF0F;
 
+        // Cartridge writes should be handled by the cartridge mapper
+        if (!boot_rom_enabled && (address < 0x8000 || (address >= 0xA000 && address <= 0xBFFF))) {
+            cartridge->write(address, value);
+            return;
+        }
+
+        // TODO: Double check if we really should write all changes to RAM, probably not
         ram[address] = value;
         // Handle writes that disable the boot ROM
         if (address == BOOT_ROM_DISABLE_ADDRESS) {
