@@ -15,7 +15,9 @@ namespace sickboy {
         file_handle.seekg(0, std::ios::beg);
         std::vector<std::uint8_t> result;
         result.resize(file_size);
-        file_handle.read(reinterpret_cast<char*>(result.data()), file_size);
+        if (!file_handle.read(reinterpret_cast<char*>(result.data()), file_size)) {
+            throw std::runtime_error("Failed to read file '" + path.string() + "' to completion.");
+        }
         return result;
     }
 

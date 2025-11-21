@@ -10,7 +10,7 @@ namespace sickboy {
     static constexpr std::size_t ROM_BANK_SIZE = 0x4000; // 16KiB
     static constexpr std::size_t RAM_BANK_SIZE = 0x2000; // 8KiB
 
-    CartridgeMBC0::CartridgeMBC0(const std::vector<std::uint8_t>& contents) {
+    CartridgeMBC0::CartridgeMBC0(const std::vector<std::uint8_t>& contents) : rom({}) {
         if (contents.size() > (2 * ROM_BANK_SIZE)) {
             throw std::runtime_error("Cartridge of type MBC0 exceeds size limit of 32kB.");
         }
@@ -28,7 +28,8 @@ namespace sickboy {
     CartridgeMBC1::CartridgeMBC1(
         const std::vector<std::uint8_t>& contents,
         std::uint32_t rom_size,
-        std::uint32_t ram_size) {
+        std::uint32_t ram_size) :
+        rom(), ram(), ram_enabled(false), rom_bank_number(0), ram_bank_number(0), banking_mode(BankingMode::SIMPLE) {
         // Initialize ROM
         if (contents.size() > rom_size) {
             throw std::runtime_error("Cartridge size " + std::to_string(contents.size()) +

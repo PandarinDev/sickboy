@@ -2,7 +2,7 @@
 
 namespace sickboy {
 
-    MMU::MMU() : cartridge(), boot_rom({}), boot_rom_enabled(true), had_interrupt_request(false) {}
+    MMU::MMU() : cartridge(), ram({}), boot_rom({}), boot_rom_enabled(true), had_interrupt_request(false) {}
 
     std::uint8_t MMU::read(std::uint16_t address) const {
         static constexpr std::uint16_t JOYPAD_ADDRESS = 0xFF00;

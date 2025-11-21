@@ -13,15 +13,18 @@ int main() {
         Window window("SickBoy", PPU::LCD_WIDTH * window_multiplier, PPU::LCD_HEIGHT * window_multiplier);
         System system("assets/tetris.gb");
         Renderer renderer;
+        Timer timer;
         bool should_stop = false;
         while (!should_stop) {
             if (system.tick()) {
+                timer.tick();
                 window.poll_events();
                 renderer.clear_buffers();
                 renderer.render(system.ppu.frame);
                 renderer.check_errors();
                 window.swap_buffers();
                 should_stop = window.should_close();
+                timer.block_until_next_frame();
             }
         }
         return 0;
