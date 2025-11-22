@@ -5,8 +5,6 @@ namespace sickboy {
     MMU::MMU() : cartridge(), ram({}), boot_rom({}), boot_rom_enabled(true), had_interrupt_request(false) {}
 
     std::uint8_t MMU::read(std::uint16_t address) const {
-        static constexpr std::uint16_t JOYPAD_ADDRESS = 0xFF00;
-
         // While boot ROM is enabled all reads between 0x00-0xFF go to the boot ROM
         if (boot_rom_enabled && address <= 0xFF) {
             return boot_rom[address];
@@ -20,11 +18,6 @@ namespace sickboy {
         // Echo RAM redirects all reads from 0xE000-0xFDFF to C000-DDFF
         if (address >= 0xE000 && address <= 0xFDFF) {
             return ram[address - 0x2000];
-        }
-        // When reading joypad register currently always report no buttons pressed
-        // TODO: Wire up input handling here to the corresponding bits in the register
-        if (address == JOYPAD_ADDRESS) {
-            return ram[address] | 0b00001111;
         }
         return ram[address];
     }

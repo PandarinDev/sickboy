@@ -313,8 +313,6 @@ namespace sickboy {
             : static_cast<std::uint8_t>(current_column - object.start_x));
         std::uint8_t palette_idx = (object.object.flags & 0b00010000) >> 4;
         bool draw_below_background = (object.object.flags & 0b10000000) != 0;
-        // TODO: This is not entirely accurate - we should collect intersecting objects
-        // up to 10 entries and then select the one with the lowest X value (and the first in memory)
         return ObjectPixelInfo {
             .color_idx = color_idx,
             .palette_idx = palette_idx,

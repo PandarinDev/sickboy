@@ -2,8 +2,6 @@
 #include "utils.h"
 #include "cartridge.h"
 
-#include <iostream>
-
 namespace sickboy {
 
     System::System(const std::filesystem::path& cartridge_path) :
@@ -28,9 +26,19 @@ namespace sickboy {
     bool System::tick() {
         // If the system is currently stopped (by a previous STOP instruction) we need to only poll inputs
         // If any of the buttons are pressed we need to resume the system exactly where we left off
+        const auto no_buttons_pressed = [this]() {
+            static constexpr std::uint16_t JOYPAD_INPUT_ADDRESS = 0xFF00;
+            const std::uint8_t joypad_value = memory->read(JOYPAD_INPUT_ADDRESS);
+            // We only care about the lower nibble - all 1s mean no buttons pressed
+            return (joypad_value & 0x0F) == 0x0F;
+        };
         if (stopped) {
-            // TODO: Add input handling and waking up on input
-            return false;
+            if (no_buttons_pressed()) {
+                return false;
+            }
+            else {
+                stopped = false;
+            }
         }
         // First tick the CPU then catch up the PPU by giving it an equivalent amount of cycles (dots)
         // This is of course not entirely accurate since these subsystems are meant to run asynchronously
