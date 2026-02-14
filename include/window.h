@@ -16,6 +16,7 @@ namespace sickboy {
         Window(Window&&);
         Window& operator=(Window&&);
 
+        GLFWwindow* get_handle() const;
         void poll_events() const;
         bool should_close() const;
         void swap_buffers() const;

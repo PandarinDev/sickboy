@@ -14,7 +14,7 @@ int main() {
         Window window("SickBoy", PPU::LCD_WIDTH * window_multiplier, PPU::LCD_HEIGHT * window_multiplier);
         System system("assets/tetris.gb");
         Renderer renderer;
-        InputManager input_manager(system.memory);
+        InputManager input_manager(system.memory, window.get_handle());
         Timer timer;
         bool should_stop = false;
         while (!should_stop) {

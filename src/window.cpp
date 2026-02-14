@@ -35,6 +35,10 @@ namespace sickboy {
         return *this;
     }
 
+    GLFWwindow* Window::get_handle() const {
+        return handle;
+    }
+
     void Window::poll_events() const {
         glfwPollEvents();
     }

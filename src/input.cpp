@@ -8,22 +8,30 @@
 #include <stdexcept>
 #include <functional>
 
+#include <iostream>
+
 namespace sickboy {
 
     std::unordered_set<InputManager*> InputManager::joystick_event_listeners;
-
-    InputManager::InputManager(const std::shared_ptr<MMU>& memory) : memory(memory) {
+    std::unordered_set<InputManager*> InputManager::key_event_listeners;
+        
+    InputManager::InputManager(const std::shared_ptr<MMU>& memory, GLFWwindow* window_handle) :
+        memory(memory), window_handle(window_handle) {
         if (!glfwInit()) {
             throw std::runtime_error("Failed to initialize GLFW.");
         }
         joystick_event_listeners.emplace(this);
+        key_event_listeners.emplace(this);
         // Set joystick callback and detect already connected joysticks
         glfwSetJoystickCallback(joystick_event_handler);
         detect_joysticks();
+        // Set key event listener
+        glfwSetKeyCallback(window_handle, key_event_handler);
     }
 
     InputManager::~InputManager() {
         joystick_event_listeners.erase(this);
+        key_event_listeners.erase(this);
     }
 
     void InputManager::tick() {
@@ -81,6 +89,15 @@ namespace sickboy {
         }
     }
 
+    void InputManager::handle_key_event(int key, int action) {
+        if (action != GLFW_RELEASE) {
+            keys_down.emplace(key);
+        }
+        else {
+            keys_down.erase(key);
+        }
+    }
+
     void InputManager::detect_joysticks() {
         for (int jid = GLFW_JOYSTICK_1; jid <= GLFW_JOYSTICK_LAST; ++jid) {
             if (glfwJoystickPresent(jid)) {
@@ -118,12 +135,32 @@ namespace sickboy {
                 input_state.button_start |= (gamepad_state.buttons[GLFW_GAMEPAD_BUTTON_START] == GLFW_PRESS);
             }
         }
+
+        // Also use keyboard state
+        const auto is_key_down = [this](int key) {
+            return keys_down.find(key) != keys_down.cend();
+        };
+        input_state.dpad_up |= is_key_down(GLFW_KEY_UP);
+        input_state.dpad_down |= is_key_down(GLFW_KEY_DOWN);
+        input_state.dpad_left |= is_key_down(GLFW_KEY_LEFT);
+        input_state.dpad_right |= is_key_down(GLFW_KEY_RIGHT);
+        input_state.button_a |= is_key_down(GLFW_KEY_A);
+        input_state.button_b |= is_key_down(GLFW_KEY_B);
+        input_state.button_select |= is_key_down(GLFW_KEY_BACKSPACE);
+        input_state.button_start |= is_key_down(GLFW_KEY_ENTER);
+
         return input_state;
     }
 
     void InputManager::joystick_event_handler(int jid, int event) {
         for (auto& instance : joystick_event_listeners) {
             instance->handle_joystick_event(jid, event);
+        }
+    }
+
+    void InputManager::key_event_handler(GLFWwindow*, int key, int, int action, int) {
+        for (auto& instance : key_event_listeners) {
+            instance->handle_key_event(key, action);
         }
     }
 
