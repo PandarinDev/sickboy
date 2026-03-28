@@ -21,8 +21,8 @@ namespace sickboy {
         return rom[address];
     }
 
-    void CartridgeMBC0::write(std::uint16_t address, std::uint8_t value) {
-        rom[address] = value;
+    void CartridgeMBC0::write(std::uint16_t, std::uint8_t) {
+        // Writes are ignored for MBC0
     }
 
     CartridgeMBC1::CartridgeMBC1(
