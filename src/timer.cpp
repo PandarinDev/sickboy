@@ -68,11 +68,12 @@ namespace sickboy {
             }
         }
 
-        // Every 64th timer tick we need to increment the divider
+        // Every 64th M-cycle we need to increment the divider
         static constexpr std::uint8_t div_increment_mask = 63;
         if ((tick_counter & div_increment_mask) == 0) {
             const auto divider_value = memory->read(TIMER_DIVIDER_ADDRESS);
-            memory->write(TIMER_DIVIDER_ADDRESS, divider_value + 1);
+            // We need to sidestep DIV resetting to 0 when we write to it, so use direct write
+            memory->direct_write(TIMER_DIVIDER_ADDRESS, divider_value + 1);
         }
     }
 

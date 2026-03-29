@@ -35,7 +35,7 @@ namespace sickboy {
         }
 
         // TODO: Double check if we really should write all changes to RAM, probably not
-        ram[address] = value;
+        direct_write(address, value);
         // Handle writes that disable the boot ROM
         if (address == BOOT_ROM_DISABLE_ADDRESS) {
             set_boot_rom_enabled(false);
@@ -51,11 +51,15 @@ namespace sickboy {
         }
         // Handle writes that trigger timer divider reset
         else if (address == TIMER_DIVIDER_ADDRESS) {
-            ram[address] = 0x00;
+            direct_write(address, 0x00);
         }
         else if (address == INTERRUPT_REQUEST_ADDRESS) {
             had_interrupt_request = true;
         }
+    }
+
+    void MMU::direct_write(std::uint16_t address, std::uint8_t value) {
+        ram[address] = value;
     }
 
     void MMU::copy_to(std::uint16_t address, const std::uint8_t* data, std::size_t len) {
