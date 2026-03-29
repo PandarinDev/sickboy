@@ -1,6 +1,5 @@
 #include "system.h"
 #include "window.h"
-#include "timer.h"
 #include "input.h"
 #include "renderer.h"
 
@@ -15,20 +14,18 @@ int main() {
         System system("assets/tetris.gb");
         Renderer renderer;
         InputManager input_manager(system.memory, window.get_handle());
-        Timer timer;
         bool should_stop = false;
         while (!should_stop) {
             // Inputs need to be ticked every frame as inputs can be queried at any state
             input_manager.tick();
             if (system.tick()) {
-                timer.tick();
                 window.poll_events();
                 renderer.clear_buffers();
                 renderer.render(system.ppu.frame);
                 renderer.check_errors();
                 window.swap_buffers();
                 should_stop = window.should_close();
-                timer.block_until_next_frame();
+                system.timer.block_until_next_frame();
             }
         }
         return 0;

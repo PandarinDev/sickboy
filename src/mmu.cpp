@@ -26,6 +26,7 @@ namespace sickboy {
         static constexpr std::uint16_t BOOT_ROM_DISABLE_ADDRESS = 0xFF50;
         static constexpr std::uint16_t OAM_DMA_COPY_ADDRESS = 0xFF46;
         static constexpr std::uint16_t INTERRUPT_REQUEST_ADDRESS = 0xFF0F;
+        static constexpr std::uint16_t TIMER_DIVIDER_ADDRESS = 0xFF04;
 
         // Cartridge writes should be handled by the cartridge mapper
         if (!boot_rom_enabled && (address < 0x8000 || (address >= 0xA000 && address <= 0xBFFF))) {
@@ -47,6 +48,10 @@ namespace sickboy {
             std::uint16_t source = value << 8;
             static constexpr std::uint16_t OAM_MEMORY = 0xFE00;
             copy_to(OAM_MEMORY, ram.data() + source, 160);
+        }
+        // Handle writes that trigger timer divider reset
+        else if (address == TIMER_DIVIDER_ADDRESS) {
+            ram[address] = 0x00;
         }
         else if (address == INTERRUPT_REQUEST_ADDRESS) {
             had_interrupt_request = true;

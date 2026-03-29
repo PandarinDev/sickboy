@@ -129,10 +129,10 @@ namespace sickboy {
             }
         }
 
-        // If the CPU is halted simply lie that we consumed 1 cycle to tick the rest of the system
+        // If the CPU is halted simply lie that we consumed 4 cycles to tick the rest of the system
         // TODO: Need to add support for the HALT bug (halt requested during interrupt requested)
         if (is_halted) {
-            return 1;
+            return 4;
         }
 
         // Fetch instruction
