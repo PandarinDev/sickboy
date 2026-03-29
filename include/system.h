@@ -3,6 +3,7 @@
 #include "mmu.h"
 #include "cpu.h"
 #include "ppu.h"
+#include "timer.h"
 
 #include <memory>
 #include <filesystem>
@@ -11,10 +12,8 @@ namespace sickboy {
 
     struct System {
 
-        static constexpr std::uint32_t MASTER_CLOCK_HZ = 4194304;
-        static constexpr std::uint8_t MASTER_CLOCK_PER_SYSTEM_CLOCK = 4;
-
         std::shared_ptr<MMU> memory;
+        Timer timer;
         CPU cpu;
         PPU ppu;
 

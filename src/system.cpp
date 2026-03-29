@@ -5,7 +5,8 @@
 namespace sickboy {
 
     System::System(const std::filesystem::path& cartridge_path) :
-        memory(std::make_shared<MMU>()), cpu(memory), ppu(memory), stopped(false) {
+        memory(std::make_shared<MMU>()), timer(memory),
+        cpu(memory), ppu(memory), stopped(false) {
         // Load boot ROM contents
         {
             auto rom_contents = FileUtils::read_binary("assets/dmg_boot.bin");
@@ -24,6 +25,7 @@ namespace sickboy {
     }
 
     bool System::tick() {
+        timer.tick_emulator();
         // If the system is currently stopped (by a previous STOP instruction) we need to only poll inputs
         // If any of the buttons are pressed we need to resume the system exactly where we left off
         const auto no_buttons_pressed = [this]() {
@@ -43,12 +45,18 @@ namespace sickboy {
         // First tick the CPU then catch up the PPU by giving it an equivalent amount of cycles (dots)
         // This is of course not entirely accurate since these subsystems are meant to run asynchronously
         // so in an accurate emulation the PPU might read something from the CPU in-between instructions.
-        auto used_cycles = cpu.tick();
+        const auto used_t_cycles = cpu.tick();
+        const auto used_m_cycles = used_t_cycles / 4;
         // Check if a stop was requested
         if (cpu.stop_requested) {
             stopped = true;
             cpu.stop_requested = false;
+            timer.reset_divider_register();
             return false;
+        }
+        // Timer should be ticked after the CPU with M-cycles
+        for (std::uint8_t i = 0; i < used_m_cycles; ++i) {
+            timer.tick_system();
         }
         if (!ppu.is_lcd_and_ppu_enabled()) {
             // Clear PPU mode in LCD status register when PPU is disabled
@@ -58,7 +66,7 @@ namespace sickboy {
             return false;
         }
         auto should_render_new_frame = false;
-        for (std::uint8_t i = 0; i < used_cycles; ++i) {
+        for (std::uint8_t i = 0; i < used_t_cycles; ++i) {
             should_render_new_frame |= ppu.tick();
         }
         return should_render_new_frame;
