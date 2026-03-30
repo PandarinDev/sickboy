@@ -35,6 +35,12 @@ namespace sickboy {
             std::uint8_t flags;
         };
 
+        // During OAM search only index and Y position are locked
+        struct ScannedOAMEntry {
+            std::uint8_t index;
+            std::uint8_t y_position;
+        };
+
         // TODO: Ensure this by adding attributes/macros for all platforms
         static_assert(sizeof(OAMEntry) == 4, "OAMEntry is not tightly packed.");
 
@@ -46,6 +52,7 @@ namespace sickboy {
         std::uint16_t last_draw_dots_length;
         std::uint8_t current_scanline;
         std::uint8_t current_column;
+        std::vector<ScannedOAMEntry> scanline_intersecting_objects;
         Frame frame;
 
         PPU(const std::shared_ptr<MMU>& memory);
@@ -71,6 +78,7 @@ namespace sickboy {
 
         void increment_scanline();
         void draw_pixel();
+        void execute_oam_scan();
         std::uint8_t fetch_background_color_index(std::uint8_t control_byte) const;
         std::uint8_t fetch_window_color_index(std::uint8_t control_byte) const;
         std::optional<ObjectPixelInfo> fetch_object_pixel_info() const;

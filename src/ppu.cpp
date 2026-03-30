@@ -7,6 +7,8 @@
 
 namespace sickboy {
 
+    static constexpr std::uint8_t MAX_INTERSECTING_OBJECTS_PER_SCANLINE = 10;
+
     std::uint16_t get_max_mode_dot_length(PPUMode mode) {
         switch (mode) {
             case PPUMode::VERTICAL_BLANK: return 4560;
@@ -37,7 +39,10 @@ namespace sickboy {
 
     PPU::PPU(const std::shared_ptr<MMU>& memory) :
         memory(memory), mode(PPUMode::OAM_SCAN), current_mode_dots(0),
-        last_draw_dots_length(0), current_scanline(0), current_column(0), frame({}) {}
+        last_draw_dots_length(0), current_scanline(0), current_column(0),
+        scanline_intersecting_objects(), frame({}) {
+        scanline_intersecting_objects.reserve(MAX_INTERSECTING_OBJECTS_PER_SCANLINE);
+    }
 
     bool PPU::is_lcd_and_ppu_enabled() const {
         static const std::uint16_t LCD_CONTROL_BYTE_ADDRESS = 0xFF40;
@@ -52,6 +57,9 @@ namespace sickboy {
         if (mode == PPUMode::HORIZONTAL_BLANK) {
             static constexpr auto min_draw_length = 172;
             max_mode_length -= last_draw_dots_length - min_draw_length;
+        }
+        else if (mode == PPUMode::OAM_SCAN) {
+            execute_oam_scan();
         }
         else if (mode == PPUMode::DRAWING) {
             draw_pixel();
@@ -118,14 +126,16 @@ namespace sickboy {
             memory->write(IF_ADDRESS, memory->read(IF_ADDRESS) | 0b10);
         }
         memory->write(LCD_STATUS_ADDRESS, final_status);
+        // Reset scanned OAM entries for the scanline
+        scanline_intersecting_objects.clear();
     }
 
     std::uint8_t color_index_to_grayscale_value(std::uint8_t color_palette, std::uint8_t color_index) {
         // TODO: Really unsure if these color values are correct or not, check in documentation
         static constexpr std::array<std::uint8_t, 4> COLOR_VALUE_LOOKUP = {
             0xFF, // 0 = White
-            0xAB, // 1 = Light gray
-            0x56, // 2 = Dark gray
+            0xAA, // 1 = Light gray
+            0x55, // 2 = Dark gray
             0x00, // 3 = Black
         };
         auto color_value = (color_palette & (0b11 << (color_index * 2))) >> (color_index * 2);
@@ -197,6 +207,39 @@ namespace sickboy {
         ++current_column;
     }
 
+    void PPU::execute_oam_scan() {
+        // OAM search is spread out over 80 dots for 40 OAM entries - this means that every other dot we should
+        // check the current object for intersection if we haven't already reached the limit (10) of intersecting OBJs.
+        if (current_mode_dots % 2 == 0 ||
+            scanline_intersecting_objects.size() == MAX_INTERSECTING_OBJECTS_PER_SCANLINE) {
+            return;
+        }
+        static constexpr std::size_t OAM_ENTRY_SIZE = sizeof(OAMEntry);
+        static constexpr std::uint16_t OAM_START_ADDR = 0xFE00;
+
+        // Load the current OAM entry
+        OAMEntry entry;
+        // Since OAM scan dots are [1, 80] this has an upper bound of 40 so comfortably fits in uint8_t - also since we are
+        // only entering this on odd dots this is guaranteed to round down to [0, 39] for indexing OAM entries.
+        const auto entry_index = static_cast<std::uint8_t>(current_mode_dots / 2);
+        memory->copy_from(OAM_START_ADDR + entry_index * OAM_ENTRY_SIZE, reinterpret_cast<std::uint8_t*>(&entry), OAM_ENTRY_SIZE);
+
+        // Check for intersection
+        static const std::uint16_t LCD_CONTROL_BYTE_ADDRESS = 0xFF40;
+        const auto lcd_control = memory->read(LCD_CONTROL_BYTE_ADDRESS);
+        std::uint8_t obj_size = (lcd_control & 0b00000100) == 0 ? 8 : 16;
+        std::int16_t start_y = static_cast<std::int16_t>(entry.y) - 16;
+        // Note that since start_y is inclusive we are adding 1 less pixel (7/15) instead of 8/16 in order to get one tile worth of pixels
+        std::int16_t end_y = start_y + obj_size - 1;
+        if (start_y > current_scanline || end_y < current_scanline) {
+            return;
+        }
+        scanline_intersecting_objects.push_back(ScannedOAMEntry{
+            .index = entry_index,
+            .y_position = entry.y
+        });
+    }
+
     std::uint8_t PPU::fetch_background_color_index(std::uint8_t control_byte) const {
         enum class TileAddressingMode : std::uint8_t {
             SIGNED = 0,
@@ -242,11 +285,12 @@ namespace sickboy {
         static constexpr std::uint16_t OBJ_TILE_START_ADDR = 0x8000;
         static constexpr std::uint16_t OAM_START_ADDR = 0xFE00;
         static constexpr std::uint8_t NUM_OAM_ENTRIES = 40;
-        static constexpr std::uint8_t MAX_INTERSECTING_OBJECTS = 10;
+        static const std::uint16_t LCD_CONTROL_BYTE_ADDRESS = 0xFF40;
+        const auto lcd_control = memory->read(LCD_CONTROL_BYTE_ADDRESS);
 
-        // TODO: This should be optimized away by doing OAM search in the actual OAM search mode
-        // Checking every object for every pixel is excessive and unnecessary. Instead we should
-        // compute intersection data during OAM search and only check that here.
+        std::uint8_t obj_size = (lcd_control & 0b00000100) == 0 ? 8 : 16;
+        // We already done OAM scan but out of all the intersecting objects for this scanline we need to
+        // select the one that intersects the current column and has the lowest start X value.
         struct ObjectWithTile {
             OAMEntry object;
             TileEntry tile;
@@ -256,26 +300,22 @@ namespace sickboy {
             std::int16_t end_y;
         };
         std::vector<ObjectWithTile> intersecting_objects;
-        for (std::uint8_t i = 0; i < NUM_OAM_ENTRIES; ++i) {
+        for (const auto& scanned_entry : scanline_intersecting_objects) {
             static constexpr auto object_entry_size = sizeof(OAMEntry);
             // Copy object attribute mapping entry from VRAM
             OAMEntry object_entry;
-            memory->copy_from(OAM_START_ADDR + i * object_entry_size, reinterpret_cast<std::uint8_t*>(&object_entry), object_entry_size);
+            memory->copy_from(OAM_START_ADDR + scanned_entry.index * object_entry_size, reinterpret_cast<std::uint8_t*>(&object_entry), object_entry_size);
+            // Overwrite Y position with the value from scan as that is locked
+            object_entry.y = scanned_entry.y_position;
 
-            // Skip the object if it does not intersect the current scanline
-            std::int16_t start_y = static_cast<std::int16_t>(object_entry.y) - 16;
-            // Note that since start_y and start_x are inclusive we are adding 1 less
-            // pixel (7/15) instead of 8/16 in order to get one tile worth of pixels.
-            // TODO: Change this +7 to +7/+15 depending on OBJ size in the control byte
-            std::int16_t end_y = start_y + 7;
             std::int16_t start_x = static_cast<std::int16_t>(object_entry.x) - 8;
             std::int16_t end_x = start_x + 7;
-            if (start_y > current_scanline ||
-                end_y < current_scanline ||
-                start_x > current_column ||
-                end_x < current_column) {
+            // Skip the object if it does not intersect the current column - we only need to check X since scanline intersection is already guaranteed
+            if (start_x > current_column || end_x < current_column) {
                 continue;
             }
+            std::int16_t start_y = static_cast<std::int16_t>(object_entry.y) - 16;
+            std::int16_t end_y = start_y + obj_size - 1;
 
             // Copy tile data corresponding to OAM
             static constexpr auto tile_entry_size = sizeof(TileEntry::value_type) * std::tuple_size_v<TileEntry>;
@@ -291,8 +331,7 @@ namespace sickboy {
                 .end_x = end_x,
                 .end_y = end_y
             });
-            // TODO: Check if we really should stop after 10
-            if (intersecting_objects.size() >= MAX_INTERSECTING_OBJECTS) {
+            if (intersecting_objects.size() >= MAX_INTERSECTING_OBJECTS_PER_SCANLINE) {
                 break;
             }
         }
@@ -306,10 +345,10 @@ namespace sickboy {
         bool flip_vertically = (object.object.flags & 0b01000000) != 0;
         bool flip_horizontally = (object.object.flags & 0b00100000) != 0;
         std::uint16_t row_colors = object.tile[flip_vertically
-            ? (7 - (current_scanline - object.start_y))
+            ? (obj_size - 1 - (current_scanline - object.start_y))
             : (current_scanline - object.start_y)];
         std::uint8_t color_idx = get_tile_color_index(row_colors, flip_horizontally
-            ? static_cast<std::uint8_t>(7 - (current_column - object.start_x))
+            ? static_cast<std::uint8_t>(obj_size - 1 - (current_column - object.start_x))
             : static_cast<std::uint8_t>(current_column - object.start_x));
         std::uint8_t palette_idx = (object.object.flags & 0b00010000) >> 4;
         bool draw_below_background = (object.object.flags & 0b10000000) != 0;
