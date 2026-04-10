@@ -289,11 +289,20 @@ namespace sickboy {
         const auto lcd_control = memory->read(LCD_CONTROL_BYTE_ADDRESS);
 
         std::uint8_t obj_size = (lcd_control & 0b00000100) == 0 ? 8 : 16;
+        const auto load_tile = [this](std::uint8_t index) -> TileEntry {
+            static constexpr auto tile_entry_size = sizeof(TileEntry::value_type) * std::tuple_size_v<TileEntry>;
+            TileEntry tile_entry;
+            std::uint16_t tile_offset = index * tile_entry_size;
+            memory->copy_from(OBJ_TILE_START_ADDR + tile_offset, reinterpret_cast<std::uint8_t*>(tile_entry.data()), tile_entry_size);
+            return tile_entry;
+        };
+
         // We already done OAM scan but out of all the intersecting objects for this scanline we need to
         // select the one that intersects the current column and has the lowest start X value.
         struct ObjectWithTile {
             OAMEntry object;
-            TileEntry tile;
+            TileEntry primary_tile;
+            std::optional<TileEntry> secondary_tile;
             std::int16_t start_x;
             std::int16_t start_y;
             std::int16_t end_x;
@@ -318,14 +327,21 @@ namespace sickboy {
             std::int16_t end_y = start_y + obj_size - 1;
 
             // Copy tile data corresponding to OAM
-            static constexpr auto tile_entry_size = sizeof(TileEntry::value_type) * std::tuple_size_v<TileEntry>;
-            TileEntry tile_entry;
-            std::uint16_t tile_offset = object_entry.tile_index * tile_entry_size;
-            memory->copy_from(OBJ_TILE_START_ADDR + tile_offset, reinterpret_cast<std::uint8_t*>(tile_entry.data()), tile_entry_size);
-            
+            std::uint8_t primary_tile_index = object_entry.tile_index;
+            std::uint8_t secondary_tile_index = 0;
+            if (obj_size == 16) {
+                primary_tile_index = object_entry.tile_index & 0xFE;
+                secondary_tile_index = object_entry.tile_index | 1;
+            }
+            TileEntry primary_tile_entry = load_tile(primary_tile_index);
+            std::optional<TileEntry> secondary_tile_entry = (obj_size == 16)
+                ? std::optional(load_tile(secondary_tile_index))
+                : std::nullopt;
+
             intersecting_objects.emplace_back(ObjectWithTile{
                 .object = std::move(object_entry),
-                .tile = std::move(tile_entry),
+                .primary_tile = std::move(primary_tile_entry),
+                .secondary_tile = std::move(secondary_tile_entry),
                 .start_x = start_x,
                 .start_y = start_y,
                 .end_x = end_x,
@@ -344,9 +360,13 @@ namespace sickboy {
         const auto& object = intersecting_objects[0];
         bool flip_vertically = (object.object.flags & 0b01000000) != 0;
         bool flip_horizontally = (object.object.flags & 0b00100000) != 0;
-        std::uint16_t row_colors = object.tile[flip_vertically
-            ? (obj_size - 1 - (current_scanline - object.start_y))
-            : (current_scanline - object.start_y)];
+        // Intersecting guarantees that this will be [0, 15]
+        std::uint8_t row_idx = flip_vertically
+            ? static_cast<std::uint8_t>(obj_size - 1 - (current_scanline - object.start_y))
+            : static_cast<std::uint8_t>(current_scanline - object.start_y);
+        std::uint16_t row_colors = row_idx < 8
+            ? object.primary_tile[row_idx]
+            : object.secondary_tile.value()[row_idx - 8];
         std::uint8_t color_idx = get_tile_color_index(row_colors, flip_horizontally
             ? static_cast<std::uint8_t>(obj_size - 1 - (current_column - object.start_x))
             : static_cast<std::uint8_t>(current_column - object.start_x));
