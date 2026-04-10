@@ -357,26 +357,33 @@ namespace sickboy {
         std::stable_sort(intersecting_objects.begin(), intersecting_objects.end(), [](const auto& first, const auto& second) {
             return first.object.x < second.object.x;
         });
-        const auto& object = intersecting_objects[0];
-        bool flip_vertically = (object.object.flags & 0b01000000) != 0;
-        bool flip_horizontally = (object.object.flags & 0b00100000) != 0;
-        // Intersecting guarantees that this will be [0, 15]
-        std::uint8_t row_idx = flip_vertically
-            ? static_cast<std::uint8_t>(obj_size - 1 - (current_scanline - object.start_y))
-            : static_cast<std::uint8_t>(current_scanline - object.start_y);
-        std::uint16_t row_colors = row_idx < 8
-            ? object.primary_tile[row_idx]
-            : object.secondary_tile.value()[row_idx - 8];
-        std::uint8_t color_idx = get_tile_color_index(row_colors, flip_horizontally
-            ? static_cast<std::uint8_t>(obj_size - 1 - (current_column - object.start_x))
-            : static_cast<std::uint8_t>(current_column - object.start_x));
-        std::uint8_t palette_idx = (object.object.flags & 0b00010000) >> 4;
-        bool draw_below_background = (object.object.flags & 0b10000000) != 0;
-        return ObjectPixelInfo {
-            .color_idx = color_idx,
-            .palette_idx = palette_idx,
-            .draw_below_background = draw_below_background
-        };
+        for (const auto& object : intersecting_objects) {
+            bool flip_vertically = (object.object.flags & 0b01000000) != 0;
+            bool flip_horizontally = (object.object.flags & 0b00100000) != 0;
+            // Intersecting guarantees that this will be [0, 15]
+            std::uint8_t row_idx = flip_vertically
+                ? static_cast<std::uint8_t>(obj_size - 1 - (current_scanline - object.start_y))
+                : static_cast<std::uint8_t>(current_scanline - object.start_y);
+            std::uint16_t row_colors = row_idx < 8
+                ? object.primary_tile[row_idx]
+                : object.secondary_tile.value()[row_idx - 8];
+            std::uint8_t color_idx = get_tile_color_index(row_colors, flip_horizontally
+                ? static_cast<std::uint8_t>(obj_size - 1 - (current_column - object.start_x))
+                : static_cast<std::uint8_t>(current_column - object.start_x));
+            // Skip intersecting objects that are transparent on this pixel
+            if (color_idx == 0) {
+                continue;
+            }
+            std::uint8_t palette_idx = (object.object.flags & 0b00010000) >> 4;
+            bool draw_below_background = (object.object.flags & 0b10000000) != 0;
+            return ObjectPixelInfo {
+                .color_idx = color_idx,
+                .palette_idx = palette_idx,
+                .draw_below_background = draw_below_background
+            };
+        }
+        // If control gets here it means that all intersecting objects were transparent at this pixel
+        return std::nullopt;
     }
 
     PPU::BackgroundTileMapInfo PPU::compute_background_tilemap_info() const {
