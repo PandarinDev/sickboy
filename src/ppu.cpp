@@ -150,8 +150,7 @@ namespace sickboy {
         std::uint8_t lower_bits = (row_colors & 0xFF);
         // High bits are the first pixels so pixel 0 is the 7th bit
         std::uint8_t shift = 7 - pixel;
-        // Somewhat confusingly the high byte gives the lower bit of the returned color index
-        return (((lower_bits & (1 << shift)) >> shift) << 1) | ((higher_bits & (1 << shift)) >> shift);
+        return (((higher_bits & (1 << shift)) >> shift) << 1) | ((lower_bits & (1 << shift)) >> shift);
     }
 
     void PPU::draw_pixel() {
