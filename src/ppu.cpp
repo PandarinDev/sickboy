@@ -3,8 +3,6 @@
 #include <stdexcept>
 #include <algorithm>
 
-#include <iostream>
-
 namespace sickboy {
 
     static constexpr std::uint8_t MAX_INTERSECTING_OBJECTS_PER_SCANLINE = 10;
@@ -40,7 +38,8 @@ namespace sickboy {
     PPU::PPU(const std::shared_ptr<MMU>& memory) :
         memory(memory), mode(PPUMode::OAM_SCAN), current_mode_dots(0),
         last_draw_dots_length(0), current_scanline(0), current_column(0),
-        scanline_intersecting_objects(), frame({}) {
+        scanline_intersecting_objects(), scanline_intersecting_window(false),
+        scanline_window_line_incremented(false), window_tile_line(0), frame({}) {
         scanline_intersecting_objects.reserve(MAX_INTERSECTING_OBJECTS_PER_SCANLINE);
     }
 
@@ -95,8 +94,10 @@ namespace sickboy {
                 memory->write(IF_ADDRESS, memory->read(IF_ADDRESS) | 0b10);
             }
 
-            // When we are switching to VBlank mode signal that a new frame needs to be rendered
+            // When we are switching to VBlank mode reset window tile line and signal that a new frame needs to be rendered
             if (mode == PPUMode::VERTICAL_BLANK) {
+                // Reset window tile line
+                window_tile_line = 0;
                 // Set VBlank in interrupt request flag
                 memory->write(IF_ADDRESS, memory->read(IF_ADDRESS) | 0b1);
                 return true;
@@ -126,8 +127,10 @@ namespace sickboy {
             memory->write(IF_ADDRESS, memory->read(IF_ADDRESS) | 0b10);
         }
         memory->write(LCD_STATUS_ADDRESS, final_status);
-        // Reset scanned OAM entries for the scanline
+        // Reset scanline related properties
         scanline_intersecting_objects.clear();
+        scanline_intersecting_window = false;
+        scanline_window_line_incremented = false;
     }
 
     std::uint8_t color_index_to_grayscale_value(std::uint8_t color_palette, std::uint8_t color_index) {
@@ -170,20 +173,22 @@ namespace sickboy {
         // Draw window and background
         if (is_background_and_window_enabled) {
             static constexpr std::uint16_t BACKGROUND_COLOR_PALETTE_ADDRESS = 0xFF47;
-            static constexpr std::uint16_t WY_ADDRESS = 0xFF4A;
             static constexpr std::uint16_t WX_ADDRESS = 0xFF4B;
-            bool is_window_enabled = (control_byte & 0b00100000) != 0;
+            bool is_window_enabled = (control_byte & 0b00100001) == 0b00100001;
             std::uint8_t background_color_palette = memory->read(BACKGROUND_COLOR_PALETTE_ADDRESS);
-            std::uint8_t window_start_y = memory->read(WY_ADDRESS);
-            std::uint16_t window_start_x = static_cast<std::int16_t>(memory->read(WX_ADDRESS)) - 7;
+            std::uint8_t window_start_x = memory->read(WX_ADDRESS);
             if (is_window_enabled &&
-                current_scanline >= window_start_y &&
-                current_column >= window_start_x) {
-                background_color_index = fetch_window_color_index(control_byte);
+                scanline_intersecting_window &&
+                current_column + 7 >= window_start_x) {
+                if (!scanline_window_line_incremented) {
+                    ++window_tile_line;
+                    scanline_window_line_incremented = true;
+                }
+                background_color_index = fetch_background_color_index(control_byte, TileIndexComputationMethod::WINDOW);
                 pixel_color = color_index_to_grayscale_value(background_color_palette, background_color_index);
             }
             else {
-                background_color_index = fetch_background_color_index(control_byte);
+                background_color_index = fetch_background_color_index(control_byte, TileIndexComputationMethod::BACKGROUND);
                 pixel_color = color_index_to_grayscale_value(background_color_palette, background_color_index);
             }
         }
@@ -208,6 +213,12 @@ namespace sickboy {
     }
 
     void PPU::execute_oam_scan() {
+        // At the first dot of the OAM scan decide window intersections
+        if (current_mode_dots == 1) {
+            static constexpr std::uint16_t WY_ADDRESS = 0xFF4A;
+            const auto wy_value = memory->read(WY_ADDRESS);
+            scanline_intersecting_window = current_scanline >= wy_value;
+        }
         // OAM search is spread out over 80 dots for 40 OAM entries - this means that every other dot we should
         // check the current object for intersection if we haven't already reached the limit (10) of intersecting OBJs.
         if (current_mode_dots % 2 == 0 ||
@@ -240,7 +251,7 @@ namespace sickboy {
         });
     }
 
-    std::uint8_t PPU::fetch_background_color_index(std::uint8_t control_byte) const {
+    std::uint8_t PPU::fetch_background_color_index(std::uint8_t control_byte, TileIndexComputationMethod idx_compute_method) const {
         enum class TileAddressingMode : std::uint8_t {
             SIGNED = 0,
             UNSIGNED = 1
@@ -249,12 +260,17 @@ namespace sickboy {
         std::uint16_t tile_data_area = (addressing_mode == TileAddressingMode::UNSIGNED)
             ? 0x8000
             : 0x9000;
-        std::uint16_t tile_map_area = ((control_byte & 0b00001000) != 0)
+        std::uint8_t tile_map_area_mask = (idx_compute_method == TileIndexComputationMethod::BACKGROUND)
+            ? 0b00001000
+            : 0b01000000;
+        std::uint16_t tile_map_area = ((control_byte & tile_map_area_mask) != 0)
             ? 0x9C00
             : 0x9800;
 
         // Compute tilemap index and fetch the corresponding tile data from VRAM
-        const auto tilemap_info = compute_background_tilemap_info();
+        const auto tilemap_info = (idx_compute_method == TileIndexComputationMethod::BACKGROUND)
+            ? compute_background_tilemap_info()
+            : compute_window_tilemap_info();
         TileEntry tile_entry;
         static constexpr auto tile_entry_size = sizeof(TileEntry::value_type) * std::tuple_size_v<TileEntry>;
         if (addressing_mode == TileAddressingMode::UNSIGNED) {
@@ -269,16 +285,6 @@ namespace sickboy {
         // Get the corresponding row in the tile and compute the color index at X
         std::uint16_t row_colors = tile_entry[tilemap_info.y_offset];
         return get_tile_color_index(row_colors, tilemap_info.x_offset);
-    }
-
-    std::uint8_t PPU::fetch_window_color_index([[maybe_unused]] std::uint8_t control_byte) const {
-        /*
-        std::uint16_t window_tilemap = ((control_byte & 0b01000000) != 0)
-            ? 0x9C00
-            : 0x9800;
-        */
-        // TODO: Implement
-        return 0;
     }
 
     std::optional<PPU::ObjectPixelInfo> PPU::fetch_object_pixel_info() const {
@@ -388,7 +394,7 @@ namespace sickboy {
 
     PPU::BackgroundTileMapInfo PPU::compute_background_tilemap_info() const {
         // Background tilemap index is not trivial to calculate due to the
-        // posibility of scrolling the background using SCX and SCY.
+        // possibility of scrolling the background using SCX and SCY.
         static constexpr std::uint16_t SCY_ADDRESS = 0xFF42;
         static constexpr std::uint16_t SCX_ADDRESS = 0xFF43;
         std::uint8_t scy = memory->read(SCY_ADDRESS);
@@ -399,6 +405,28 @@ namespace sickboy {
         // From the final coordinates we can calculate the tile indices
         std::uint8_t tile_y = final_y / 8;
         std::uint8_t tile_x = final_x / 8;
+        std::uint16_t tile_idx = tile_y * 32 + tile_x;
+        return BackgroundTileMapInfo {
+            .tile_idx = tile_idx,
+            .x_offset = static_cast<std::uint8_t>(final_x % 8),
+            .y_offset = static_cast<std::uint8_t>(final_y % 8)
+        };
+    }
+
+    PPU::BackgroundTileMapInfo PPU::compute_window_tilemap_info() const {
+        // Window tilemap index needs to account for WX/window line compared to LX/LY
+        // It is important not to use WY, but to use window line instead as that is
+        // only incremented whenever the window is visible on a given scanline - the
+        // continuity of the window vertically is not guaranteed if WX is set offscreen mid-frame.
+        // Also note that window start is actually WX + 7, not at WX.
+        static constexpr std::uint16_t WX_ADDRESS = 0xFF4B;
+        std::uint8_t window_start_x = memory->read(WX_ADDRESS);
+        // This method should only be called if the window intersection is guaranteed,
+        // thus the subtraction (LX + 7 - WX) should always be zero or positive.
+        std::uint8_t final_x = current_column + 7 - window_start_x;
+        std::uint8_t final_y = window_tile_line - 1;
+        std::uint8_t tile_x = final_x / 8;
+        std::uint8_t tile_y = final_y / 8;
         std::uint16_t tile_idx = tile_y * 32 + tile_x;
         return BackgroundTileMapInfo {
             .tile_idx = tile_idx,

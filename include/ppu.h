@@ -53,6 +53,9 @@ namespace sickboy {
         std::uint8_t current_scanline;
         std::uint8_t current_column;
         std::vector<ScannedOAMEntry> scanline_intersecting_objects;
+        bool scanline_intersecting_window;
+        bool scanline_window_line_incremented;
+        std::uint8_t window_tile_line;
         Frame frame;
 
         PPU(const std::shared_ptr<MMU>& memory);
@@ -76,20 +79,18 @@ namespace sickboy {
             bool draw_below_background;
         };
 
+        enum class TileIndexComputationMethod {
+            BACKGROUND,
+            WINDOW
+        };
+
         void increment_scanline();
         void draw_pixel();
         void execute_oam_scan();
-        std::uint8_t fetch_background_color_index(std::uint8_t control_byte) const;
-        std::uint8_t fetch_window_color_index(std::uint8_t control_byte) const;
+        std::uint8_t fetch_background_color_index(std::uint8_t control_byte, TileIndexComputationMethod idx_compute_method) const;
         std::optional<ObjectPixelInfo> fetch_object_pixel_info() const;
         BackgroundTileMapInfo compute_background_tilemap_info() const;
-        void draw_objects(std::uint8_t color_palette);
-        void draw_tile(
-            const TileEntry& tile,
-            std::uint8_t x_offset,
-            std::uint8_t y_offset,
-            std::uint8_t color_palette,
-            bool is_object);
+        BackgroundTileMapInfo compute_window_tilemap_info() const;
 
     };
 
