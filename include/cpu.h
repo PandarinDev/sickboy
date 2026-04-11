@@ -94,6 +94,7 @@ namespace sickboy {
         bool is_prefixed;
         bool is_halted;
         bool stop_requested;
+        bool enable_ime_requested;
 
         CPU(const std::shared_ptr<MMU>& memory);
 

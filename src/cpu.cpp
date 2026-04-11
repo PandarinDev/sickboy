@@ -55,7 +55,7 @@ namespace sickboy {
     }
 
     CPU::CPU(const std::shared_ptr<MMU>& memory) :
-        registers({}), memory(memory), is_prefixed(false), is_halted(false), stop_requested(false) {}
+        registers({}), memory(memory), is_prefixed(false), is_halted(false), stop_requested(false), enable_ime_requested(false) {}
 
     std::uint8_t interrupt_jump_vector_lookup(std::uint8_t bit) {
         switch (bit) {
@@ -127,6 +127,12 @@ namespace sickboy {
                     }
                 }
             }
+        }
+
+        // Enable IME if requested
+        if (enable_ime_requested) {
+            registers.set_ime(true);
+            enable_ime_requested = false;
         }
 
         // If the CPU is halted simply lie that we consumed 4 cycles to tick the rest of the system
@@ -950,9 +956,8 @@ namespace sickboy {
     }
 
     std::uint8_t enable_master_interrupt(CPU& cpu) {
-        // TODO: This is incorrect! IME becomes set one instruction !after! IE
-        // This is known to cause issues and should be fixed soon.
-        cpu.registers.set_ime(true);
+        // Interrupt enable is delayed by one instruction so this only needs to be flagged
+        cpu.enable_ime_requested = true;
         return 0;
     }
 
