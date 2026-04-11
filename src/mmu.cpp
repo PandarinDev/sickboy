@@ -34,8 +34,13 @@ namespace sickboy {
             return;
         }
 
-        // TODO: Double check if we really should write all changes to RAM, probably not
-        direct_write(address, value);
+        const auto is_write_to_vram = address >= 0x8000 && address < 0xA000;
+        const auto is_write_to_wram = address >= 0xC000 && address < 0xE000;
+        const auto is_write_to_oam = address >= 0xFE00 && address < 0xFEA0;
+        const auto is_write_to_high_region = address >= 0xFF00;
+        if (is_write_to_vram || is_write_to_wram || is_write_to_oam || is_write_to_high_region) {
+            direct_write(address, value);
+        }
         // Handle writes that disable the boot ROM
         if (address == BOOT_ROM_DISABLE_ADDRESS) {
             set_boot_rom_enabled(false);
