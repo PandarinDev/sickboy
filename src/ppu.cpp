@@ -163,9 +163,8 @@ namespace sickboy {
         // We are storing background color index separately as it makes it easier
         // to decide if an object pixel with low priority should be drawn or not
         std::uint8_t background_color_index = 0;
-        std::uint8_t pixel_color = 0;
+        std::uint8_t pixel_color = 0xFF;
 
-        // TODO: We are currently ignoring some of LCD control data (such as OBJ size)
         static constexpr std::uint16_t LCD_CONTROL_BYTE_ADDRESS = 0xFF40;
         std::uint8_t control_byte = memory->read(LCD_CONTROL_BYTE_ADDRESS);
         bool is_background_and_window_enabled = (control_byte & 0b1) != 0;
