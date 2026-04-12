@@ -12,6 +12,7 @@ namespace sickboy {
         FileUtils() = delete;
 
         static std::vector<std::uint8_t> read_binary(const std::filesystem::path& path);
+        static std::string read_string(const std::filesystem::path& path);
 
     };
 

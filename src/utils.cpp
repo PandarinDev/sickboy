@@ -2,6 +2,7 @@
 
 #include <fstream>
 #include <stdexcept>
+#include <sstream>
 
 namespace sickboy {
 
@@ -19,6 +20,16 @@ namespace sickboy {
             throw std::runtime_error("Failed to read file '" + path.string() + "' to completion.");
         }
         return result;
+    }
+
+    std::string FileUtils::read_string(const std::filesystem::path& path) {
+        std::ifstream file_handle(path, std::ios::binary);
+        if (!file_handle) {
+            throw std::runtime_error("Failed to open file at '" + path.string() + "'.");
+        }
+        std::stringstream str_stream;
+        str_stream << file_handle.rdbuf();
+        return str_stream.str();
     }
 
 }
