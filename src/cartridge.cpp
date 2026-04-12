@@ -43,22 +43,25 @@ namespace sickboy {
     }
 
     std::uint8_t CartridgeMBC1::read(std::uint16_t address) const {
+        // TODO: Add support for MBC1M addressing - though not super relevant for legit ROMs.
+        // We potentially go above 16 bit addressing here (21 bits total for large ROMs) so we need to use uint32_t here
+        const std::uint32_t rom_size_mask = static_cast<std::uint32_t>(rom.size() - 1);
         // ROM bank 0
         if (address < ROM_BANK_SIZE) {
+            // For simple banking mode we do not need to mask the input address here since the
+            // condition guarantees only bits [0,13] are set, however, for advanced banking we
+            // want to use only the bits that are relevant for our bank size (throw away the upper bits if needed).
             return (banking_mode == BankingMode::SIMPLE)
-                ? *get_rom_bank_address(0, address)
-                : *get_rom_bank_address(ram_bank_number << 5, address);
+                ? rom.at(address)
+                : rom.at(((ram_bank_number << 19) | address) & rom_size_mask);
         }
         // Switchable ROM bank
         else if (address < (2 * ROM_BANK_SIZE)) {
-            std::uint8_t rom_bank = (ram_bank_number << 5) | rom_bank_number;
-            // Reads to the second ROM bank should never be mapped to the first ROM bank
-            // TODO: There are convoluted exceptions to this, handle those correctly
-            if (rom_bank == 0) {
-                rom_bank = 1;
-            }
-            // Subtract ROM bank size from the address to normalize it
-            return *get_rom_bank_address(rom_bank, address - ROM_BANK_SIZE);
+            std::uint16_t masked_address = address & 0x3FFF;
+            // Reading from ROM bank 0 in this address range is always corrected to ROM bank 1
+            return (rom_bank_number == 0)
+                ? rom.at(((ram_bank_number << 19) | (1 << 14) | masked_address) & rom_size_mask)
+                : rom.at(((ram_bank_number << 19) | (rom_bank_number << 14) | masked_address) & rom_size_mask);
         }
         // Switchable RAM bank
         else if (address >= 0xA000 && address < 0xC000) {
@@ -66,21 +69,23 @@ namespace sickboy {
             if (!ram_enabled) {
                 return 0xFF;
             }
-            // Subtract RAM start address from address to normalize it
-            return *get_ram_bank_address(ram_bank_number, address - 0xA000);
+            std::uint16_t masked_address = address & 0x1FFF;
+            return (banking_mode == BankingMode::SIMPLE)
+                ? ram.at(masked_address % ram.size())
+                : ram.at(((ram_bank_number << 13) | masked_address) % ram.size());
         }
         throw std::runtime_error("Read with invalid address " + std::to_string((int) address) + " in MBC1 cartridge.");
     }
 
     void CartridgeMBC1::write(std::uint16_t address, std::uint8_t value) {
         // RAM enable
-        if (address >= 0x00 && address < 0x2000) {
+        if (address < 0x2000) {
             static constexpr std::uint8_t ENABLE_RAM_VALUE = 0xA;
             ram_enabled = ((value & 0x0F) == ENABLE_RAM_VALUE);
         }
         // ROM bank number (5 bits + 2 bits from RAM bank)
         else if (address >= 0x2000 && address < 0x4000) {
-            rom_bank_number = (ram_bank_number << 5) | (value & 0b11111);
+            rom_bank_number = value & 0b11111;
         }
         // RAM bank number (2 bits)
         else if (address >= 0x4000 && address < 0x6000) {
@@ -93,24 +98,13 @@ namespace sickboy {
         // Writes to RAM
         else if (address >= 0xA000 && address < 0xC000) {
             if (ram_enabled) {
-                *get_ram_bank_address(ram_bank_number, address - 0xA000) = value;
+                std::uint16_t masked_address = address & 0x1FFF;
+                std::uint16_t ram_offset = (banking_mode == BankingMode::SIMPLE)
+                    ? masked_address
+                    : (ram_bank_number << 13) | masked_address;
+                ram.at(ram_offset % ram.size()) = value;
             }
         }
-    }
-
-    const std::uint8_t* CartridgeMBC1::get_rom_bank_address(std::uint8_t bank, std::uint16_t address) const {
-        // TODO: This should wrap around
-        return rom.data() + ROM_BANK_SIZE * bank + address;
-    }
-
-    const std::uint8_t* CartridgeMBC1::get_ram_bank_address(std::uint8_t bank, std::uint16_t address) const {
-        // TODO: This should wrap around (probably?)
-        return ram.data() + RAM_BANK_SIZE * bank + address;
-    }
-
-    std::uint8_t* CartridgeMBC1::get_ram_bank_address(std::uint8_t bank, std::uint16_t address) {
-        // TODO: This should wrap around (probably?)
-        return ram.data() + RAM_BANK_SIZE * bank + address;
     }
 
     CartridgeHeader CartridgeUtils::parse_cartridge_header(const std::vector<std::uint8_t>& cartridge_data) {

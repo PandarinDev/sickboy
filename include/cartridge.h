@@ -62,10 +62,6 @@ namespace sickboy {
         std::uint8_t ram_bank_number;
         BankingMode banking_mode;
 
-        const std::uint8_t* get_rom_bank_address(std::uint8_t bank, std::uint16_t address) const;
-        const std::uint8_t* get_ram_bank_address(std::uint8_t bank, std::uint16_t address) const;
-        std::uint8_t* get_ram_bank_address(std::uint8_t bank, std::uint16_t address);
-
     };
 
     struct CartridgeHeader {
