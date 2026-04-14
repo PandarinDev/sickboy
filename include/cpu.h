@@ -78,6 +78,7 @@ namespace sickboy {
     using InstructionParamFetcher = std::function<std::optional<InstructionParam>(CPU&)>;
 
     struct Instruction {
+        const char* name;
         std::uint8_t length;
         std::uint8_t cycles;
         std::function<std::uint8_t(CPU&)> implementation;
@@ -95,6 +96,7 @@ namespace sickboy {
         bool is_halted;
         bool stop_requested;
         bool enable_ime_requested;
+        bool trace_instructions;
 
         CPU(const std::shared_ptr<MMU>& memory);
 
