@@ -7,7 +7,7 @@ namespace sickboy {
     std::uint8_t MMU::read(std::uint16_t address) const {
         // While boot ROM is enabled all reads between 0x00-0xFF go to the boot ROM
         if (boot_rom_enabled && address <= 0xFF) {
-            return boot_rom[address];
+            return boot_rom.at(address);
         }
 
         // Cartridge reads should be handled by the cartridge mapper
@@ -17,9 +17,14 @@ namespace sickboy {
 
         // Echo RAM redirects all reads from 0xE000-0xFDFF to C000-DDFF
         if (address >= 0xE000 && address <= 0xFDFF) {
-            return ram[address - 0x2000];
+            return ram.at(address - 0x2000);
         }
-        return ram[address];
+
+        // If trying to read unsupported CGB registers return 0xFF
+        if (address == 0xFF4C || address == 0xFF4D) {
+            return 0xFF;
+        }
+        return ram.at(address);
     }
 
     void MMU::write(std::uint16_t address, std::uint8_t value) {
@@ -64,7 +69,7 @@ namespace sickboy {
     }
 
     void MMU::direct_write(std::uint16_t address, std::uint8_t value) {
-        ram[address] = value;
+        ram.at(address) = value;
     }
 
     void MMU::copy_to(std::uint16_t address, const std::uint8_t* data, std::size_t len) {

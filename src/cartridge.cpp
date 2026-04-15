@@ -18,7 +18,7 @@ namespace sickboy {
     }
 
     std::uint8_t CartridgeMBC0::read(std::uint16_t address) const {
-        return rom[address];
+        return rom.at(address);
     }
 
     void CartridgeMBC0::write(std::uint16_t, std::uint8_t) {
@@ -56,7 +56,7 @@ namespace sickboy {
                 : rom.at(((ram_bank_number << 19) | address) & rom_size_mask);
         }
         // Switchable ROM bank
-        else if (address < (2 * ROM_BANK_SIZE)) {
+        else if (address >= 0x4000 && address < 0x8000) {
             std::uint16_t masked_address = address & 0x3FFF;
             // Reading from ROM bank 0 in this address range is always corrected to ROM bank 1
             return (rom_bank_number == 0)
@@ -114,9 +114,9 @@ namespace sickboy {
         if (cartridge_data.size() < RAM_TYPE_OFFSET) {
             throw std::runtime_error("Invalid cartridge - data not long enough to read cartridge header.");
         }
-        const auto mbc_mode = cartridge_type_to_mbc_mode(cartridge_data[CARTRIDGE_TYPE_OFFSET]);
-        const auto rom_size = rom_exponent_to_rom_size(cartridge_data[ROM_EXPONENT_OFFSET]);
-        const auto ram_size = ram_type_to_ram_size(cartridge_data[RAM_TYPE_OFFSET]);
+        const auto mbc_mode = cartridge_type_to_mbc_mode(cartridge_data.at(CARTRIDGE_TYPE_OFFSET));
+        const auto rom_size = rom_exponent_to_rom_size(cartridge_data.at(ROM_EXPONENT_OFFSET));
+        const auto ram_size = ram_type_to_ram_size(cartridge_data.at(RAM_TYPE_OFFSET));
         return CartridgeHeader {
             .mbc_mode = mbc_mode,
             .rom_size = rom_size,

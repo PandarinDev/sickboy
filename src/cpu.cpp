@@ -1054,7 +1054,7 @@ namespace sickboy {
         { 0x0B, Instruction { .name = "DEC BC", .length = 1, .cycles = 8, .implementation = dec16_impl } },
         { 0x0C, Instruction { .name = "INC C", .length = 1, .cycles = 4, .implementation = inc8_impl } },
         { 0x0D, Instruction { .name = "DEC C", .length = 1, .cycles = 4, .implementation = dec8_impl } },
-        { 0x0E, Instruction { .name = "LD E, IMM8", .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },
+        { 0x0E, Instruction { .name = "LD C, IMM8", .length = 2, .cycles = 8, .implementation = load8_imm8_impl } },
         { 0x0F, Instruction { .name = "RRCA", .length = 1, .cycles = 4, .implementation = rotate_right_circular_clear_zero_impl } },
         { 0x10, Instruction { .name = "STOP 0", .length = 2, .cycles = 4, .implementation = stop_impl } },
         { 0x11, Instruction { .name = "LD DE, IMM16", .length = 3, .cycles = 16, .implementation = load16_impl } },
