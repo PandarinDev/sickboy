@@ -44,15 +44,18 @@ namespace sickboy {
         // Start off values as "all buttons released" (lower nibble all 1s)
         std::uint8_t values = joypad_high_nibble | 0x0F;
         bool need_interrupt = false;
-        const auto set_value_bit = [&values, &need_interrupt](bool input, std::uint8_t bit) {
+        const auto set_value_bit = [&joypad_value, &values, &need_interrupt](bool input, std::uint8_t bit) {
             std::uint8_t bitmask = (1 << bit);
-            // Do nothing if the button is released or is already set to pressed
-            if (!input || (values & bitmask) == 0) {
+            // Do nothing if the button is released
+            if (!input) {
                 return;
             }
-            // Button is pressed and previously was not pressed - clear the given bit and set interrupt
+            // Clear the bit corresponding to the button
             values &= ~bitmask;
+            // If the button wasn't pressed previously require a joypad interrupt
+            if ((joypad_value & bitmask) != 0) {
             need_interrupt = true;
+            }
         };
         
         // Only query the input state if either buttons or dpad is selected as polling inputs is costly
@@ -72,7 +75,8 @@ namespace sickboy {
             }
         }
         // Write the new value and trigger joystick interrupt if any of the lower nibble bits went 1->0 (pressed)
-        memory->write(JOYPAD_INPUT_ADDRESS, values);
+        // Important to use direct write as regular write protects against changes in the lower nibble
+        memory->direct_write(JOYPAD_INPUT_ADDRESS, values);
 
         if (need_interrupt) {
             static constexpr std::uint16_t INTERRUPT_REQUEST_ADDRESS = 0xFF0F;

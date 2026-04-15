@@ -32,6 +32,7 @@ namespace sickboy {
         static constexpr std::uint16_t OAM_DMA_COPY_ADDRESS = 0xFF46;
         static constexpr std::uint16_t INTERRUPT_REQUEST_ADDRESS = 0xFF0F;
         static constexpr std::uint16_t TIMER_DIVIDER_ADDRESS = 0xFF04;
+        static constexpr std::uint16_t JOYPAD_INPUT_ADDRESS = 0xFF00;
 
         // Cartridge writes should be handled by the cartridge mapper
         if (!boot_rom_enabled && (address < 0x8000 || (address >= 0xA000 && address <= 0xBFFF))) {
@@ -39,6 +40,13 @@ namespace sickboy {
             return;
         }
 
+        // Joypad lower nibble is read-only
+        if (address == JOYPAD_INPUT_ADDRESS) {
+            const std::uint8_t lower_nibble = ram.at(JOYPAD_INPUT_ADDRESS) & 0x0F;
+            value = (value & 0xF0) | lower_nibble;
+        }
+
+        // Check if write should go back into RAM
         const auto is_write_to_vram = address >= 0x8000 && address < 0xA000;
         const auto is_write_to_wram = address >= 0xC000 && address < 0xE000;
         const auto is_write_to_oam = address >= 0xFE00 && address < 0xFEA0;
