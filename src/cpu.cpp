@@ -55,7 +55,7 @@ namespace sickboy {
     }
 
     CPU::CPU(const std::shared_ptr<MMU>& memory) :
-        registers({}), memory(memory), is_prefixed(false), is_halted(false), stop_requested(false),
+        registers({}), memory(memory), is_halted(false), stop_requested(false),
         enable_ime_requested(false), trace_instructions(false) {}
 
     std::uint8_t interrupt_jump_vector_lookup(std::uint8_t bit) {
@@ -143,18 +143,25 @@ namespace sickboy {
         }
 
         // Fetch instruction
-        auto was_prefixed = is_prefixed;
         auto instruction_code = memory->read(registers.pc);
+        static constexpr std::uint8_t PREFIX_OPCODE = 0xCB;
+        static constexpr std::uint8_t PREFIX_FETCH_CYCLES = 4;
+        // If we encounter a prefix step PC, fetch the next byte and add an additional 4 cycles for that
+        std::uint8_t additional_cycles = 0;
+        bool is_prefixed = false;
+        if (instruction_code == PREFIX_OPCODE) {
+            is_prefixed = true;
+            registers.pc++;
+            additional_cycles += PREFIX_FETCH_CYCLES;
+            instruction_code = memory->read(registers.pc);
+        }
         const auto& instruction = is_prefixed
             ? lookup_prefixed_instruction(instruction_code)
             : lookup_instruction(instruction_code);
-        auto additional_cycles = instruction.implementation(*this);
+
+        additional_cycles += instruction.implementation(*this);
         // Since we are adding unsigned ints here wrap around is guaranteed in case of PC overflow
         registers.pc = registers.pc + instruction.length;
-        // If the cycle started out prefixed reset the prefix
-        if (was_prefixed) {
-            is_prefixed = false;
-        }
 
         // Return the number of master clock cycles used
         return instruction.cycles + additional_cycles;
@@ -413,11 +420,6 @@ namespace sickboy {
         cpu.registers.set_flag_h(true);
         cpu.registers.set_flag_c(false);
 
-        return 0;
-    }
-
-    std::uint8_t enable_prefix(CPU& cpu) {
-        cpu.is_prefixed = true;
         return 0;
     }
 
@@ -1243,7 +1245,7 @@ namespace sickboy {
         { 0xC8, Instruction { .name = "RET Z", .length = 1, .cycles = 8, .implementation = ret_impl } },
         { 0xC9, Instruction { .name = "RET", .length = 0, .cycles = 16, .implementation = ret_impl } },
         { 0xCA, Instruction { .name = "JP Z, IMM16", .length = 3, .cycles = 12, .implementation = jump_absolute_impl } },
-        { 0xCB, Instruction { .name = "PREFIX", .length = 1, .cycles = 4, .implementation = enable_prefix } },
+        // 0xCB is a special prefix explicitly handled by the CPU
         { 0xCC, Instruction { .name = "CALL Z, IMM16", .length = 3, .cycles = 12, .implementation = call_impl } },
         { 0xCD, Instruction { .name = "CALL IMM16", .length = 0, .cycles = 24, .implementation = call_impl } },
         { 0xCE, Instruction { .name = "ADC A, IMM8", .length = 2, .cycles = 8, .implementation = add8_carry_impl } },
