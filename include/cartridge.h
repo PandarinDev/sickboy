@@ -64,6 +64,34 @@ namespace sickboy {
 
     };
 
+    // TODO: The current implementation is incomplete as the RTC is not adjustable
+    // and will always return the current system time. Also it cannot be halted.
+    struct CartridgeMBC3 : Cartridge {
+
+        CartridgeMBC3(
+            const std::vector<std::uint8_t>& contents,
+            std::uint32_t rom_size,
+            std::uint32_t ram_size);
+
+        std::uint8_t read(std::uint16_t address) const override;
+        void write(std::uint16_t address, std::uint8_t value) override;
+
+    private:
+
+        std::vector<std::uint8_t> rom;
+        std::vector<std::uint8_t> ram;
+        bool ram_rtc_enabled;
+        std::uint8_t rom_bank_number;
+        // This value can represent either the RAM bank number of the selected RTC register
+        std::uint8_t ram_bank_number_rtc_register;
+        std::uint8_t latch_clock_value;
+        std::array<std::uint8_t, 5> rtc_data;
+
+        bool is_rtc_selected() const;
+        void latch_rtc_data();
+
+    };
+
     struct CartridgeHeader {
         MBCMode mbc_mode;
         std::uint32_t rom_size;
