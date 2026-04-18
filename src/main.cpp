@@ -7,11 +7,15 @@
 
 using namespace sickboy;
 
-int main() {
+int main(int argc, char* argv[]) {
+    if (argc < 2) {
+        std::cerr << "Invalid usage: sickboy <game_path>" << std::endl;
+        return 1;
+    }
     try {
         static constexpr auto window_multiplier = 4;
         Window window("SickBoy", PPU::LCD_WIDTH * window_multiplier, PPU::LCD_HEIGHT * window_multiplier);
-        System system("assets/tetris.gb");
+        System system("assets/bootix_dmg.bin", argv[1]);
         Renderer renderer;
         InputManager input_manager(system.memory, window.get_handle());
         bool should_stop = false;

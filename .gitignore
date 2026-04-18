@@ -1,3 +1,4 @@
 /.vscode
 /build
 /assets/*
+!/assets/bootix_dmg.bin

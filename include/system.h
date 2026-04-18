@@ -17,7 +17,9 @@ namespace sickboy {
         CPU cpu;
         PPU ppu;
 
-        System(const std::filesystem::path& cartridge_path);
+        System(
+            const std::filesystem::path& boot_rom_path,
+            const std::filesystem::path& cartridge_path);
 
         // Returns true if a new frame should be rendered
         bool tick();

@@ -4,12 +4,14 @@
 
 namespace sickboy {
 
-    System::System(const std::filesystem::path& cartridge_path) :
+    System::System(
+        const std::filesystem::path& boot_rom_path,
+        const std::filesystem::path& cartridge_path) :
         memory(std::make_shared<MMU>()), timer(memory),
         cpu(memory), ppu(memory), stopped(false) {
         // Load boot ROM contents
         {
-            auto rom_contents = FileUtils::read_binary("assets/dmg_boot.bin");
+            auto rom_contents = FileUtils::read_binary(boot_rom_path);
             if (rom_contents.size() != 256) {
                 throw std::runtime_error("Invalid size of boot ROM.");
             }

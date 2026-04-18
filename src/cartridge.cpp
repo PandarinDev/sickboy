@@ -141,9 +141,10 @@ namespace sickboy {
         // Switchable ROM bank
         else if (address >= 0x4000 && address < 0x8000) {
             std::uint16_t masked_address = address & 0x3FFF;
-            // TODO: Documentation says $20, $40 and $60 is now readable but it also says that
-            // writing to ROM bank number the value 0 is still corrected to 1 - so which is it?
-            return rom.at(((rom_bank_number << 14) | masked_address) & rom_size_mask);
+            // Reading from ROM bank 0 in this address range is always corrected to ROM bank 1
+            return (rom_bank_number == 0)
+                ? rom.at(((1 << 14) | masked_address) & rom_size_mask)
+                : rom.at(((rom_bank_number << 14) | masked_address) & rom_size_mask);
         }
         // RAM/RTC data
         else if (address >= 0xA000 && address < 0xC000) {
