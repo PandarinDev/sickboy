@@ -3,6 +3,7 @@
 #include "mmu.h"
 #include "cpu.h"
 #include "ppu.h"
+#include "apu.h"
 #include "timer.h"
 
 #include <memory>
@@ -16,6 +17,7 @@ namespace sickboy {
         Timer timer;
         CPU cpu;
         PPU ppu;
+        APU apu;
 
         System(
             const std::filesystem::path& boot_rom_path,

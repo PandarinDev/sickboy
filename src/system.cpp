@@ -8,7 +8,7 @@ namespace sickboy {
         const std::filesystem::path& boot_rom_path,
         const std::filesystem::path& cartridge_path) :
         memory(std::make_shared<MMU>()), timer(memory),
-        cpu(memory), ppu(memory), stopped(false) {
+        cpu(memory), ppu(memory), apu(memory), stopped(false) {
         // Load boot ROM contents
         {
             auto rom_contents = FileUtils::read_binary(boot_rom_path);
@@ -56,9 +56,13 @@ namespace sickboy {
             timer.reset_divider_register();
             return false;
         }
-        // Timer should be ticked after the CPU with M-cycles
+        // Timer and APU should be ticked after the CPU with M-cycles
+        const auto apu_enabled = apu.is_apu_enabled();
         for (std::uint8_t i = 0; i < used_m_cycles; ++i) {
             timer.tick_system();
+            if (apu_enabled) {
+                apu.tick();
+            }
         }
         if (!ppu.is_lcd_and_ppu_enabled()) {
             // Clear PPU mode in LCD status register when PPU is disabled

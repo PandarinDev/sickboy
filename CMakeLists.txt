@@ -15,6 +15,7 @@ file(GLOB_RECURSE SICKBOY_HEADERS "include/*.h")
 
 find_package(glfw3 CONFIG REQUIRED)
 find_package(glad CONFIG REQUIRED)
+find_package(OpenAL CONFIG REQUIRED)
 
 add_executable(sickboy ${SICKBOY_HEADERS} ${SICKBOY_SOURCES})
 target_include_directories(sickboy PRIVATE "include")
@@ -23,4 +24,4 @@ target_compile_options(sickboy PRIVATE "/W4" "/WX")
 else()
 target_compile_options(sickboy PRIVATE "-Wall" "-Wextra" "-Wpedantic" "-Werror")
 endif()
-target_link_libraries(sickboy glfw glad::glad)
+target_link_libraries(sickboy glfw glad::glad OpenAL::OpenAL)
