@@ -2,9 +2,17 @@
 
 namespace sickboy {
 
-    MMU::MMU() : cartridge(), ram({}), boot_rom({}), boot_rom_enabled(true), had_interrupt_request(false) {}
+    MMU::MMU() :
+        cartridge(), ram({}), boot_rom({}), boot_rom_enabled(true),
+        had_interrupt_request(false), read_interceptors(), write_interceptors() {}
 
     std::uint8_t MMU::read(std::uint16_t address) const {
+        // Trigger the interceptor if present
+        const auto interceptor_it = read_interceptors.find(address);
+        if (interceptor_it != read_interceptors.cend()) {
+            return interceptor_it->second(address);
+        }
+
         // While boot ROM is enabled all reads between 0x00-0xFF go to the boot ROM
         if (boot_rom_enabled && address <= 0xFF) {
             return boot_rom.at(address);
@@ -33,6 +41,13 @@ namespace sickboy {
         static constexpr std::uint16_t INTERRUPT_REQUEST_ADDRESS = 0xFF0F;
         static constexpr std::uint16_t TIMER_DIVIDER_ADDRESS = 0xFF04;
         static constexpr std::uint16_t JOYPAD_INPUT_ADDRESS = 0xFF00;
+
+        // Trigger the interceptor if present
+        const auto interceptor_it = write_interceptors.find(address);
+        if (interceptor_it != write_interceptors.cend()) {
+            interceptor_it->second(address, value);
+            return;
+        }
 
         // Cartridge writes should be handled by the cartridge mapper
         if (!boot_rom_enabled && (address < 0x8000 || (address >= 0xA000 && address <= 0xBFFF))) {
@@ -104,6 +119,14 @@ namespace sickboy {
 
     void MMU::set_cartridge(std::unique_ptr<Cartridge> new_cartridge) {
         cartridge = std::move(new_cartridge);
+    }
+
+    void MMU::add_read_interceptor(std::uint16_t address, MemoryReadInterceptor read_interceptor) {
+        read_interceptors.emplace(address, read_interceptor);
+    }
+
+    void MMU::add_write_interceptor(std::uint16_t address, MemoryWriteInterceptor write_interceptor) {
+        write_interceptors.emplace(address, write_interceptor);
     }
 
 }

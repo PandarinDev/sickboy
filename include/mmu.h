@@ -5,8 +5,13 @@
 #include <array>
 #include <memory>
 #include <cstdint>
+#include <functional>
+#include <unordered_map>
 
 namespace sickboy {
+
+    using MemoryReadInterceptor = std::function<std::uint8_t(std::uint16_t)>;
+    using MemoryWriteInterceptor = std::function<void(std::uint16_t, std::uint8_t)>;
 
     struct MMU {
 
@@ -25,6 +30,9 @@ namespace sickboy {
         bool poll_interrupt_request();
         void set_cartridge(std::unique_ptr<Cartridge> cartridge);
 
+        void add_read_interceptor(std::uint16_t address, MemoryReadInterceptor read_iterceptor);
+        void add_write_interceptor(std::uint16_t address, MemoryWriteInterceptor write_interceptor);
+
     private:
 
         std::unique_ptr<Cartridge> cartridge;
@@ -36,6 +44,8 @@ namespace sickboy {
         std::array<std::uint8_t, 0x00FF + 1> boot_rom;
         bool boot_rom_enabled;
         bool had_interrupt_request;
+        std::unordered_map<std::uint16_t, MemoryReadInterceptor> read_interceptors;
+        std::unordered_map<std::uint16_t, MemoryWriteInterceptor> write_interceptors;
 
     };
 
