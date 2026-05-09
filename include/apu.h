@@ -23,6 +23,7 @@ namespace sickboy {
         AudioEnvelope envelope;
         std::uint8_t sweep_pace;
         std::uint16_t period_counter;
+        std::uint8_t length_timer;
 
         AudioChannel();
 
@@ -43,9 +44,12 @@ namespace sickboy {
         std::shared_ptr<MMU> memory;
         ALCdevice* device;
         ALCcontext* context;
+        std::uint8_t last_div_value;
+        std::uint8_t div_apu_counter;
         std::array<AudioChannel, NUM_CHANNELS> channels;
 
         bool is_channel_on(std::uint8_t channel) const;
+        void increment_length_timers();
 
     };
 
