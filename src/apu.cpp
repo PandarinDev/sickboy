@@ -11,14 +11,19 @@ namespace sickboy {
     static constexpr std::uint16_t CHANNEL_3_DAC_ENABLED_ADDRESS = 0xFF1A;
     static constexpr std::uint16_t CHANNEL_STRIDE = 0x05;
     static constexpr std::uint16_t TIMER_DIV_ADDRESS = 0xFF04;
+    static constexpr ALsizei AUDIO_SAMPLE_RATE = 48'000;
+    static constexpr ALsizei AUDIO_SAMPLES_PER_BUFFER = 1024;
+    static constexpr double AUDIO_BUFFER_DURATION_MS = AUDIO_SAMPLES_PER_BUFFER / (double) AUDIO_SAMPLE_RATE * 1000.0;
+    // APU frequency is directly tied to the master clock
+    static constexpr auto APU_FREQUENCY_HZ = 4194304;
 
     AudioChannel::AudioChannel() :
         on(false), length_enabled(false), volume(0), envelope(AudioEnvelope::DECREASE_VOLUME),
-        sweep_pace(0), period_counter(0), length_timer(0) {}
+        sweep_pace(0), period(0), length_timer(0) {}
 
     APU::APU(const std::shared_ptr<MMU>& memory) :
         memory(memory), device(nullptr), context(nullptr),
-        last_div_value(memory->read(TIMER_DIV_ADDRESS)), div_apu_counter(0) {
+        last_div_value(memory->read(TIMER_DIV_ADDRESS)), div_apu_counter(0), buffer_write_index(0), sample_generation_counter(0), channels() {
         device = alcOpenDevice(nullptr);
         if (!device) {
             throw std::runtime_error("Failed to open default audio device.");
@@ -49,6 +54,9 @@ namespace sickboy {
                 }
             });
         }
+
+        alGenBuffers(static_cast<ALsizei>(audio_buffers.size()), audio_buffers.data());
+        alGenSources(1, &audio_source);
     }
 
     APU::~APU() {
@@ -81,6 +89,23 @@ namespace sickboy {
             }
         }
         last_div_value = current_div_value;
+
+        ++sample_generation_counter;
+        const auto num_buffer_generation = should_generate_buffer_data();
+        if (num_buffer_generation > 0) {
+            const auto buffer_data = generate_buffer_data(num_buffer_generation);
+            for (std::size_t i = 0; i < num_buffer_generation; ++i) {
+                const auto buffer_idx = buffer_write_index;
+                buffer_write_index = (buffer_write_index + 1) % NUM_BUFFERS;
+                // TODO: Format should not be mono, implement panning etc.
+                alBufferData(audio_buffers[buffer_idx], AL_FORMAT_MONO16, buffer_data[i].data(), static_cast<ALsizei>(buffer_data[i].size() * sizeof(std::int16_t)), AUDIO_SAMPLE_RATE);
+            }
+            // TODO: Do we need to re-queue and re-play the buffers/source after every generation?
+            alSourceQueueBuffers(audio_source, static_cast<ALsizei>(audio_buffers.size()), audio_buffers.data());
+            alSourcePlay(audio_source);
+
+            sample_generation_counter = 0;
+        }
     }
 
     bool APU::is_apu_enabled() const {
@@ -122,6 +147,19 @@ namespace sickboy {
                 channel.on = false;
             }
         }
+    }
+
+    // Returns how many buffers worth of data we need to generate
+    std::uint8_t APU::should_generate_buffer_data() const {
+        // We can compute the elapsed emulation time from the number of APU ticks since last sample generation
+        const auto elapsed_ms = sample_generation_counter * 4 / static_cast<double>(APU_FREQUENCY_HZ);
+        return static_cast<std::uint8_t>(elapsed_ms / AUDIO_BUFFER_DURATION_MS);
+    }
+
+    std::vector<std::vector<std::int16_t>> APU::generate_buffer_data(std::uint8_t) const {
+        // TODO: Implement
+        std::vector<std::vector<std::int16_t>> buffer_data;
+        return buffer_data;
     }
 
 }
