@@ -1,5 +1,7 @@
 #include "mmu.h"
 
+#include <cstring>
+
 namespace sickboy {
 
     MMU::MMU() :

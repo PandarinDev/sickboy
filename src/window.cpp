@@ -1,5 +1,6 @@
 #include "window.h"
 
+#include <utility>
 #include <stdexcept>
 
 namespace sickboy {

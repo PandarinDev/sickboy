@@ -2,8 +2,8 @@
 
 #include "mmu.h"
 
-#include <al/al.h>
-#include <al/alc.h>
+#include <AL/al.h>
+#include <AL/alc.h>
 
 #include <memory>
 #include <array>
@@ -24,8 +24,10 @@ namespace sickboy {
         std::uint8_t volume;
         AudioEnvelope envelope;
         std::uint8_t sweep_pace;
-        std::uint16_t period;
+        std::uint16_t period_value;
         std::uint8_t length_timer;
+        std::uint8_t duty_cycle_waveform_idx;
+        std::uint8_t duty_cycle_sample_idx;
 
         AudioChannel();
 
@@ -63,7 +65,8 @@ namespace sickboy {
         bool is_channel_on(std::uint8_t channel) const;
         void increment_length_timers();
         std::uint8_t should_generate_buffer_data() const;
-        std::vector<std::vector<std::int16_t>> generate_buffer_data(std::uint8_t num_buffers) const;
+        std::vector<std::vector<std::int16_t>> generate_buffer_data(std::uint8_t num_buffers);
+        std::uint16_t get_channel_period(std::uint8_t channel) const;
 
     };
 

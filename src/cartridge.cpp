@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include <chrono>
+#include <cstring>
 
 namespace sickboy {
 

@@ -288,7 +288,6 @@ namespace sickboy {
     std::optional<PPU::ObjectPixelInfo> PPU::fetch_object_pixel_info() const {
         static constexpr std::uint16_t OBJ_TILE_START_ADDR = 0x8000;
         static constexpr std::uint16_t OAM_START_ADDR = 0xFE00;
-        static constexpr std::uint8_t NUM_OAM_ENTRIES = 40;
         static const std::uint16_t LCD_CONTROL_BYTE_ADDRESS = 0xFF40;
         const auto lcd_control = memory->read(LCD_CONTROL_BYTE_ADDRESS);
 
