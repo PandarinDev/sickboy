@@ -194,17 +194,22 @@ namespace sickboy {
                 return (waveform_bits & (1 << sample_idx)) >> sample_idx;
             };
             std::uint8_t current_waveform_bit = get_waveform_bit(channels[0].duty_cycle_sample_idx);
+            std::uint16_t channel_period = get_channel_period(0);
             for (std::size_t sample_idx = 0; sample_idx < AUDIO_SAMPLES_PER_BUFFER; ++sample_idx) {
                 // TODO: Implement envelope which would modify the volume field
                 // TODO: Rewrite this to cleaner code - volume ranges [0, 15], but 16bit PCM is [-2^16/2, 2^16/2]
-                samples[sample_idx] = (current_waveform_bit
+                std::uint16_t periods_per_sample = APU_FREQUENCY_HZ / 4 / channel_period;
+                std::int16_t sample_value = (current_waveform_bit
                     ? (channels[0].volume / 15.0f)
                     : -(channels[0].volume / 15.0f)) * 32767;
-                channels[0].period_value--;
-                if (channels[0].period_value == 0) {
-                    channels[0].period_value = get_channel_period(0);
-                    channels[0].duty_cycle_sample_idx++;
+                samples[sample_idx] = sample_value;
+                // TODO: This is incorrect, the remainder should also be subtracted from the next period value
+                if (channels[0].period_value <= periods_per_sample) {
+                    channels[0].period_value = channel_period;
+                    channels[0].duty_cycle_sample_idx = (channels[0].duty_cycle_sample_idx + 1) % 8;
                     current_waveform_bit = get_waveform_bit(channels[0].duty_cycle_sample_idx);
+                } else {
+                    channels[0].period_value -= periods_per_sample;
                 }
             }
             buffer_data.push_back(std::move(samples));
