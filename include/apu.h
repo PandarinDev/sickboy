@@ -64,9 +64,10 @@ namespace sickboy {
 
         bool is_channel_on(std::uint8_t channel) const;
         void increment_length_timers();
-        std::uint8_t should_generate_buffer_data() const;
+        bool should_generate_buffer_data() const;
         std::vector<std::vector<std::int16_t>> generate_buffer_data(std::uint8_t num_buffers);
         std::uint16_t get_channel_period(std::uint8_t channel) const;
+        void initialize_buffers();
 
     };
 
