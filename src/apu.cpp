@@ -46,7 +46,10 @@ namespace sickboy {
         }
         for (std::uint8_t channel = 0; channel < NUM_CHANNELS; ++channel) {
             std::uint16_t channel_control_address = CHANNEL_1_CONTROL_ADDRESS + CHANNEL_STRIDE * channel;
-            memory->add_write_interceptor(channel_control_address, [this, memory, channel](std::uint16_t, std::uint8_t value) {
+            memory->add_write_interceptor(channel_control_address, [this, memory, channel](std::uint16_t address, std::uint8_t value) {
+                // Do the actual write
+                memory->direct_write(address, value);
+                // Adjust channel parameters
                 bool is_triggered = (value & 0b10000000) != 0;
                 bool length_enabled = (value & 0b01000000) != 0;
                 // TODO: What happens if the channel was already enabled/triggered? Do we still re-initialize values?
@@ -212,10 +215,11 @@ namespace sickboy {
             };
             std::uint8_t current_waveform_bit = get_waveform_bit(channels[0].duty_cycle_sample_idx);
             std::uint16_t channel_period = get_channel_period(0);
+            // TODO: This likely should not be calculated from the APU frequency, but from our sampling rate (48kHz) !!!
+            std::uint16_t periods_per_sample = static_cast<std::uint16_t>(APU_FREQUENCY_HZ / 4 / channel_period);
             for (std::size_t sample_idx = 0; sample_idx < AUDIO_SAMPLES_PER_BUFFER; ++sample_idx) {
                 // TODO: Implement envelope which would modify the volume field
                 // TODO: Rewrite this to cleaner code - volume ranges [0, 15], but 16bit PCM is [-2^16/2, 2^16/2]
-                std::uint16_t periods_per_sample = static_cast<std::uint16_t>(APU_FREQUENCY_HZ / 4 / channel_period);
                 std::int16_t sample_value = static_cast<std::int16_t>((current_waveform_bit
                     ? (channels[0].volume / 15.0f)
                     : -(channels[0].volume / 15.0f)) * 32767);
