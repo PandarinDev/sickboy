@@ -16,10 +16,13 @@ namespace sickboy {
     static constexpr std::uint16_t CHANNEL_STRIDE = 0x05;
     static constexpr std::uint16_t TIMER_DIV_ADDRESS = 0xFF04;
     static constexpr ALsizei AUDIO_SAMPLE_RATE = 48'000;
-    static constexpr ALsizei AUDIO_SAMPLES_PER_BUFFER = 1024;
+    static constexpr ALsizei AUDIO_SAMPLES_PER_BUFFER = 256;
     static constexpr double AUDIO_BUFFER_DURATION_MS = AUDIO_SAMPLES_PER_BUFFER / (double) AUDIO_SAMPLE_RATE * 1000.0;
-    // APU frequency is directly tied to the master clock
+    // APU frequency is directly tied to the master clock - note that we are really ticking the APU at 1/4th of this speed
     static constexpr auto APU_FREQUENCY_HZ = 4194304;
+    // TODO: This is not entirely accurate - we are losing the fractional part of the divison.
+    // We should also come up with a solution for the sample generation counter where the fractional part is respected.
+    static constexpr auto APU_TICKS_PER_SAMPLE = APU_FREQUENCY_HZ / 4 / AUDIO_SAMPLE_RATE;
 
     static std::array<std::uint8_t, 4> PULSE_DUTY_CYCLES = {
         0b00000001, // 12.5%
@@ -34,8 +37,9 @@ namespace sickboy {
 
     APU::APU(const std::shared_ptr<MMU>& memory) :
         memory(memory), device(nullptr), context(nullptr),
-        last_div_value(memory->read(TIMER_DIV_ADDRESS)), div_apu_counter(0), buffer_write_index(0),
-        sample_generation_counter(0), channels() {
+        last_div_value(memory->read(TIMER_DIV_ADDRESS)), div_apu_counter(0),
+        sample_generation_counter(0), channels(), ring_buffer(),
+        ring_buffer_start_idx(0), ring_buffer_current_idx(0) {
         device = alcOpenDevice(nullptr);
         if (!device) {
             throw std::runtime_error("Failed to open default audio device.");
@@ -94,6 +98,22 @@ namespace sickboy {
     void APU::tick() {
         static constexpr std::uint8_t DIV_APU_MASK = 0b00010000;
         const auto current_div_value = memory->read(TIMER_DIV_ADDRESS);
+
+        // Tick channel periods and step duty cycle samples - while the APU runs at 1/4th
+        // speed compared to the CPU system ensures that APU is ticked for every M-cycle,
+        // meaning that we do not need to do any additional checks here.
+        for (std::uint8_t i = 0; i < NUM_CHANNELS; ++i) {
+            // Max value comes from the fact we have 11 bits for the period => 2^11 = 0x800
+            static constexpr std::uint16_t max_value = 0x7FF;
+            if (channels[i].period_value == max_value) {
+                channels[i].duty_cycle_sample_idx = (channels[i].duty_cycle_sample_idx + 1) % 8;
+                channels[i].period_value = get_channel_period(i);
+            }
+            else {
+                channels[i].period_value++;
+            }
+        }
+
         // Check if the 4th bit of the timer divider register went 1->0
         if ((last_div_value & DIV_APU_MASK) != 0 && (current_div_value & DIV_APU_MASK) == 0) {
             ++div_apu_counter;
@@ -112,41 +132,35 @@ namespace sickboy {
         }
         last_div_value = current_div_value;
 
+        // Check if we need to generate a sample on this tick
         ++sample_generation_counter;
-        if (should_generate_buffer_data()) {
-            ALint num_processed_buffers = 0;
-            alGetSourcei(audio_source, AL_BUFFERS_PROCESSED, &num_processed_buffers);
-            if (num_processed_buffers > 0) {
-                std::vector<ALuint> processed_buffers(num_processed_buffers, 0);
-                alSourceUnqueueBuffers(audio_source, num_processed_buffers, processed_buffers.data());
+        if (should_generate_sample()) {
+            // std::cout << "Generating sample now\n";
 
-                std::vector<std::vector<std::int16_t>> buffer_data = generate_buffer_data(static_cast<std::uint8_t>(num_processed_buffers));
-                for (std::size_t i = 0; i < buffer_data.size(); ++i) {
-                    const auto buffer = processed_buffers[i];
-                    alBufferData(
-                        buffer,
-                        AL_FORMAT_MONO16,
-                        buffer_data[i].data(),
-                        static_cast<ALsizei>(buffer_data[i].size() * sizeof(std::int16_t)),
-                        AUDIO_SAMPLE_RATE
-                    );
-                }
-                alSourceQueueBuffers(audio_source, num_processed_buffers, processed_buffers.data());
-            }
+            const auto sample = generate_sample();
+            ring_buffer[ring_buffer_current_idx] = sample;
+            ring_buffer_current_idx = (ring_buffer_current_idx + 1) % RING_BUFFER_SAMPLES;
+        }
 
+        // Check if we have enough data in the ring buffer to upload to audio buffer
+        if (has_enough_samples_for_buffer()) {
+            // std::cout << "We have enough samples\n";
+            upload_samples();
+
+            // Check for possible underrun
             ALint source_state;
             alGetSourcei(audio_source, AL_SOURCE_STATE, &source_state);
             if (source_state != AL_PLAYING) {
                 // TODO: Maybe add a warning about detecting audio underrun
                 alSourcePlay(audio_source);
             }
-            sample_generation_counter = 0;
         }
 
         // Check for openAL errors
+        // TODO: Change this to only occur every X ticks or only if we have made any calls to openAL
         ALenum audio_error = alGetError();
         if (audio_error != AL_NO_ERROR) {
-            throw std::runtime_error("OpenAL error at end received: " + std::to_string((int) audio_error));
+            throw std::runtime_error("OpenAL error received: " + std::to_string((int) audio_error));
         }
     }
 
@@ -191,62 +205,78 @@ namespace sickboy {
         }
     }
 
-    bool APU::should_generate_buffer_data() const {
-        // We can compute the elapsed emulation time from the number of APU ticks since last sample generation
-        const auto elapsed_ms = (sample_generation_counter * 4) / static_cast<double>(APU_FREQUENCY_HZ) * 1000.0;
-        return elapsed_ms > AUDIO_BUFFER_DURATION_MS;
+    bool APU::should_generate_sample() const {
+        return sample_generation_counter >= APU_TICKS_PER_SAMPLE;
     }
 
-    std::vector<std::vector<std::int16_t>> APU::generate_buffer_data(std::uint8_t num_buffers) {
-        std::vector<std::vector<std::int16_t>> buffer_data;
-        for (std::size_t buffer_idx = 0; buffer_idx < num_buffers; ++buffer_idx) {
-            // Initialize all samples to zero
-            std::vector<std::int16_t> samples(AUDIO_SAMPLES_PER_BUFFER, 0);
-            // If the channel is not turned on return with all zero samples
-            if (!is_channel_on(0)) {
-                buffer_data.push_back(std::move(samples));
-                continue;
-            }
-            // TODO: We are currently only filling samples from channel#1, do this for all channels and mix
-            // Period counter determines how often we are dropping samples into the buffer
-            const auto waveform_bits = PULSE_DUTY_CYCLES[channels[0].duty_cycle_waveform_idx];
-            const auto get_waveform_bit = [waveform_bits](std::uint8_t sample_idx) -> std::uint8_t {
-                return (waveform_bits & (1 << sample_idx)) >> sample_idx;
-            };
-            std::uint8_t current_waveform_bit = get_waveform_bit(channels[0].duty_cycle_sample_idx);
-            std::uint16_t channel_period = get_channel_period(0);
-            // TODO: Avoid rounding this value as it contributes to audio accuracy (e.g. it getting rounded to 22 instead of 21.8453 means that a 441Hz sound will be 444Hz)
-            std::uint16_t periods_per_sample = static_cast<std::uint16_t>(std::round(APU_FREQUENCY_HZ / 4 / (double) AUDIO_SAMPLE_RATE));
-            for (std::size_t sample_idx = 0; sample_idx < AUDIO_SAMPLES_PER_BUFFER; ++sample_idx) {
-                // TODO: Implement envelope which would modify the volume field
-                // TODO: Rewrite this to cleaner code - volume ranges [0, 15], but 16bit PCM is [-2^16/2, 2^16/2]
-                std::int16_t sample_value = static_cast<std::int16_t>((current_waveform_bit
-                    ? (channels[0].volume / 15.0f)
-                    : -(channels[0].volume / 15.0f)) * 32767);
-                samples[sample_idx] = sample_value;
-                // TODO: This is incorrect, the remainder should also be subtracted from the next period value
-                if (channels[0].period_value <= periods_per_sample) {
-                    channels[0].period_value = channel_period;
-                    channels[0].duty_cycle_sample_idx = (channels[0].duty_cycle_sample_idx + 1) % 8;
-                    current_waveform_bit = get_waveform_bit(channels[0].duty_cycle_sample_idx);
-                } else {
-                    channels[0].period_value -= periods_per_sample;
-                }
-            }
-            buffer_data.push_back(std::move(samples));
+    std::int16_t APU::generate_sample() {
+        // TODO: This only generates for channel#0 now - generate for other channels as well and mix the result
+        sample_generation_counter -= APU_TICKS_PER_SAMPLE;
+        if (!is_channel_on(0)) {
+            return 0;
         }
-        return buffer_data;
+        const std::uint8_t waveform_bits = PULSE_DUTY_CYCLES[channels[0].duty_cycle_waveform_idx];
+        const std::uint8_t sample_idx = channels[0].duty_cycle_sample_idx;
+        const std::uint8_t waveform_bit = (waveform_bits & (1 << sample_idx)) >> sample_idx;
+        return static_cast<std::int16_t>((waveform_bit
+            ? (channels[0].volume / 15.0f)
+            : -(channels[0].volume / 15.0f)) * 32767);
+    }
+
+    bool APU::has_enough_samples_for_buffer() const {
+        // Trivial case if the ring buffer has not wrapped around
+        if (ring_buffer_current_idx >= ring_buffer_start_idx) {
+            return (ring_buffer_current_idx - ring_buffer_start_idx) >= AUDIO_SAMPLES_PER_BUFFER;
+        }
+        // Otherwise calculation is slightly trickier
+        return (RING_BUFFER_SAMPLES - ring_buffer_start_idx + ring_buffer_current_idx) >= AUDIO_SAMPLES_PER_BUFFER;
+    }
+
+    void APU::upload_samples() {
+        // Check if we have a processed buffer where we can upload data
+        ALint num_processed_buffers = 0;
+        alGetSourcei(audio_source, AL_BUFFERS_PROCESSED, &num_processed_buffers);
+        if (num_processed_buffers == 0) {
+            // TODO: Remove this and handle somehow better
+            // std::cout << "We have enough samples in ring buffer, but no processed buffer to upload to\n";
+            return;
+        }
+
+        // TODO: Currently we are only ever uploading one buffer worth of data - but maybe we have enough to fill multiple buffers
+        ALuint candidate_buffer = 0;
+        alSourceUnqueueBuffers(audio_source, 1, &candidate_buffer);
+        std::vector<std::int16_t> buffer_data(AUDIO_SAMPLES_PER_BUFFER, 0);
+
+        // Trivial case if the ring buffer has not wrapped around
+        if (ring_buffer_current_idx >= ring_buffer_start_idx) {
+            memcpy(buffer_data.data(), ring_buffer.data() + ring_buffer_start_idx, AUDIO_SAMPLES_PER_BUFFER * sizeof(std::int16_t));
+        }
+        // Otherwise we need to copy in two parts
+        else {
+            // TODO: The math is off here (by 1 probably)
+            std::size_t bytes_until_buffer_end = AUDIO_SAMPLES_PER_BUFFER - ring_buffer_start_idx;
+            memcpy(buffer_data.data(), ring_buffer.data() + ring_buffer_start_idx, bytes_until_buffer_end * sizeof(std::int16_t));
+            memcpy(buffer_data.data() + bytes_until_buffer_end, ring_buffer.data(), ring_buffer_current_idx * sizeof(std::int16_t));
+        }
+        alBufferData(
+            candidate_buffer,
+            AL_FORMAT_MONO16,
+            buffer_data.data(),
+            static_cast<ALsizei>(buffer_data.size() * sizeof(std::int16_t)),
+            AUDIO_SAMPLE_RATE
+        );
+        alSourceQueueBuffers(audio_source, 1, &candidate_buffer);
+        // std::cout << "Enqueued buffer\n";
+
+        // Adjust the start of the ring buffer to the current index
+        ring_buffer_start_idx = ring_buffer_current_idx;
     }
 
     std::uint16_t APU::get_channel_period([[maybe_unused]] std::uint8_t channel) const {
         // TODO: This should respect the input channel value
         const std::uint8_t period_lower = memory->read(CHANNEL_1_PERIOD_ADDRESS);
         const std::uint8_t period_higher = memory->read(CHANNEL_1_PERIOD_ADDRESS + 1) & 0b00000111;
-        // This could be implemented one of two ways - either cast to signed integer (what the registers
-        // actually store) which will be negative and then change the sign to positive, or treat as unsigned
-        // and subtract from 2048. Second approach seems more straightforward so doing that here.
-        // Also 2048 comes from the fact that we have 11 bits for the period - so this is guaranteed to be non-negative.
-        return 2048 - static_cast<std::uint16_t>((period_higher << 8) | period_lower);
+        return static_cast<std::uint16_t>((period_higher << 8) | period_lower);
     }
 
     void APU::initialize_buffers() {

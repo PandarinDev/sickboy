@@ -50,6 +50,7 @@ namespace sickboy {
         // TODO: Experiment with lowering this and making it configurable. Would be nice to get it down to ~30-50ms.
         static constexpr std::size_t NUM_BUFFERS = 4;
         static constexpr std::size_t NUM_CHANNELS = 4;
+        static constexpr std::size_t RING_BUFFER_SAMPLES = 4096;
 
         std::shared_ptr<MMU> memory;
         ALCdevice* device;
@@ -58,14 +59,18 @@ namespace sickboy {
         ALuint audio_source;
         std::uint8_t last_div_value;
         std::uint8_t div_apu_counter;
-        std::uint8_t buffer_write_index;
         std::uint32_t sample_generation_counter;
         std::array<AudioChannel, NUM_CHANNELS> channels;
+        std::array<std::int16_t, RING_BUFFER_SAMPLES> ring_buffer;
+        std::uint16_t ring_buffer_start_idx;
+        std::uint16_t ring_buffer_current_idx;
 
         bool is_channel_on(std::uint8_t channel) const;
         void increment_length_timers();
-        bool should_generate_buffer_data() const;
-        std::vector<std::vector<std::int16_t>> generate_buffer_data(std::uint8_t num_buffers);
+        bool should_generate_sample() const;
+        std::int16_t generate_sample();
+        bool has_enough_samples_for_buffer() const;
+        void upload_samples();
         std::uint16_t get_channel_period(std::uint8_t channel) const;
         void initialize_buffers();
 
