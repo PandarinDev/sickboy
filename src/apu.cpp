@@ -5,6 +5,7 @@
 
 #include <string>
 #include <iostream>
+#include <algorithm>
 
 namespace sickboy {
 
@@ -248,15 +249,17 @@ namespace sickboy {
         std::vector<std::int16_t> buffer_data(AUDIO_SAMPLES_PER_BUFFER, 0);
 
         // Trivial case if the ring buffer has not wrapped around
+        // TODO: This is jank because we sometimes have data for more than 1 buffer which means current index is all over the place compared to start
+        // E.g. maybe current already wrapped around, but the section that we need to upload is sequential at the end.
         if (ring_buffer_current_idx >= ring_buffer_start_idx) {
             memcpy(buffer_data.data(), ring_buffer.data() + ring_buffer_start_idx, AUDIO_SAMPLES_PER_BUFFER * sizeof(std::int16_t));
         }
         // Otherwise we need to copy in two parts
         else {
-            // TODO: The math is off here (by 1 probably)
-            std::size_t bytes_until_buffer_end = AUDIO_SAMPLES_PER_BUFFER - ring_buffer_start_idx;
-            memcpy(buffer_data.data(), ring_buffer.data() + ring_buffer_start_idx, bytes_until_buffer_end * sizeof(std::int16_t));
-            memcpy(buffer_data.data() + bytes_until_buffer_end, ring_buffer.data(), ring_buffer_current_idx * sizeof(std::int16_t));
+            std::size_t samples_until_buffer_end = std::min(RING_BUFFER_SAMPLES - ring_buffer_start_idx, (size_t) AUDIO_SAMPLES_PER_BUFFER);
+            std::size_t remainder_samples = AUDIO_SAMPLES_PER_BUFFER - samples_until_buffer_end;
+            memcpy(buffer_data.data(), ring_buffer.data() + ring_buffer_start_idx, samples_until_buffer_end * sizeof(std::int16_t));
+            memcpy(buffer_data.data() + samples_until_buffer_end, ring_buffer.data(), remainder_samples * sizeof(std::int16_t));
         }
         alBufferData(
             candidate_buffer,
