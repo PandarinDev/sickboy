@@ -64,15 +64,16 @@ namespace sickboy {
         std::array<std::int16_t, RING_BUFFER_SAMPLES> ring_buffer;
         std::uint16_t ring_buffer_start_idx;
         std::uint16_t ring_buffer_current_idx;
+        bool playback_started;
+        std::uint8_t current_buffer_idx;
 
         bool is_channel_on(std::uint8_t channel) const;
         void increment_length_timers();
         bool should_generate_sample() const;
         std::int16_t generate_sample();
         bool has_enough_samples_for_buffer() const;
-        void upload_samples();
+        bool upload_samples();
         std::uint16_t get_channel_period(std::uint8_t channel) const;
-        void initialize_buffers();
 
     };
 

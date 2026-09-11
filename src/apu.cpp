@@ -17,13 +17,21 @@ namespace sickboy {
     static constexpr std::uint16_t CHANNEL_STRIDE = 0x05;
     static constexpr std::uint16_t TIMER_DIV_ADDRESS = 0xFF04;
     static constexpr ALsizei AUDIO_SAMPLE_RATE = 48'000;
-    static constexpr ALsizei AUDIO_SAMPLES_PER_BUFFER = 256;
-    static constexpr double AUDIO_BUFFER_DURATION_MS = AUDIO_SAMPLES_PER_BUFFER / (double) AUDIO_SAMPLE_RATE * 1000.0;
+    // Buffer sample size should be carefully chosen - the number of buffers multiplied by the samples per buffer must be
+    // higher than the max idle time while APU is not getting called. E.g. with 4 buffers, 256 samples per buffer and 48kHz
+    // sampling rate our total buffer duration is ~21ms. While waiting for the next frame the max time that can elapse when
+    // running in real-time is ~16.6ms. This leaves us with a ~4.5ms extra buffer if all 4 buffers were queued right before
+    // the wait, which is very unlikely. Hence 512 samples which is a safe value, but with a bit of extra added latency.
+    // Note that we could reduce this if we tried to push buffers more frequently as it can happen that we have data ready
+    // in the ringbuffer but we couldn't upload it yet because there were no free buffers at the time.
+    static constexpr ALsizei AUDIO_SAMPLES_PER_BUFFER = 512;
     // APU frequency is directly tied to the master clock - note that we are really ticking the APU at 1/4th of this speed
     static constexpr auto APU_FREQUENCY_HZ = 4194304;
     // TODO: This is not entirely accurate - we are losing the fractional part of the divison.
     // We should also come up with a solution for the sample generation counter where the fractional part is respected.
     static constexpr auto APU_TICKS_PER_SAMPLE = APU_FREQUENCY_HZ / 4 / AUDIO_SAMPLE_RATE;
+    static constexpr float MASTER_VOLUME = 0.2f;
+    static constexpr std::int16_t VOLUME_AMPLITUDE = static_cast<std::int16_t>(32767 * MASTER_VOLUME);
 
     static std::array<std::uint8_t, 4> PULSE_DUTY_CYCLES = {
         0b00000001, // 12.5%
@@ -40,7 +48,8 @@ namespace sickboy {
         memory(memory), device(nullptr), context(nullptr),
         last_div_value(memory->read(TIMER_DIV_ADDRESS)), div_apu_counter(0),
         sample_generation_counter(0), channels(), ring_buffer(),
-        ring_buffer_start_idx(0), ring_buffer_current_idx(0) {
+        ring_buffer_start_idx(0), ring_buffer_current_idx(0), playback_started(false),
+        current_buffer_idx(0) {
         device = alcOpenDevice(nullptr);
         if (!device) {
             throw std::runtime_error("Failed to open default audio device.");
@@ -81,7 +90,6 @@ namespace sickboy {
 
         alGenBuffers(static_cast<ALsizei>(audio_buffers.size()), audio_buffers.data());
         alGenSources(1, &audio_source);
-        initialize_buffers();
     }
 
     APU::~APU() {
@@ -134,26 +142,23 @@ namespace sickboy {
         last_div_value = current_div_value;
 
         // Check if we need to generate a sample on this tick
-        ++sample_generation_counter;
         if (should_generate_sample()) {
-            // std::cout << "Generating sample now\n";
-
             const auto sample = generate_sample();
             ring_buffer[ring_buffer_current_idx] = sample;
             ring_buffer_current_idx = (ring_buffer_current_idx + 1) % RING_BUFFER_SAMPLES;
         }
+        else {
+            ++sample_generation_counter;
+        }
 
         // Check if we have enough data in the ring buffer to upload to audio buffer
-        if (has_enough_samples_for_buffer()) {
-            // std::cout << "We have enough samples\n";
-            upload_samples();
-
-            // Check for possible underrun
-            ALint source_state;
-            alGetSourcei(audio_source, AL_SOURCE_STATE, &source_state);
-            if (source_state != AL_PLAYING) {
-                // TODO: Maybe add a warning about detecting audio underrun
-                alSourcePlay(audio_source);
+        while (has_enough_samples_for_buffer() && upload_samples()) {
+            if (playback_started) {
+                ALint source_state = 0;
+                alGetSourcei(audio_source, AL_SOURCE_STATE, &source_state);
+                if (source_state != AL_PLAYING) {
+                    alSourcePlay(audio_source);
+                }
             }
         }
 
@@ -207,12 +212,14 @@ namespace sickboy {
     }
 
     bool APU::should_generate_sample() const {
-        return sample_generation_counter >= APU_TICKS_PER_SAMPLE;
+        const auto ring_buffer_next_idx = (ring_buffer_current_idx + 1) % RING_BUFFER_SAMPLES;
+        return sample_generation_counter >= APU_TICKS_PER_SAMPLE &&
+            ring_buffer_next_idx != ring_buffer_start_idx; // Prevent overwriting existing samples after wrapping around
     }
 
     std::int16_t APU::generate_sample() {
         // TODO: This only generates for channel#0 now - generate for other channels as well and mix the result
-        sample_generation_counter -= APU_TICKS_PER_SAMPLE;
+        sample_generation_counter = 0;
         if (!is_channel_on(0)) {
             return 0;
         }
@@ -221,7 +228,7 @@ namespace sickboy {
         const std::uint8_t waveform_bit = (waveform_bits & (1 << sample_idx)) >> sample_idx;
         return static_cast<std::int16_t>((waveform_bit
             ? (channels[0].volume / 15.0f)
-            : -(channels[0].volume / 15.0f)) * 32767);
+            : -(channels[0].volume / 15.0f)) * VOLUME_AMPLITUDE);
     }
 
     bool APU::has_enough_samples_for_buffer() const {
@@ -233,19 +240,24 @@ namespace sickboy {
         return (RING_BUFFER_SAMPLES - ring_buffer_start_idx + ring_buffer_current_idx) >= AUDIO_SAMPLES_PER_BUFFER;
     }
 
-    void APU::upload_samples() {
+    bool APU::upload_samples() {
         // Check if we have a processed buffer where we can upload data
-        ALint num_processed_buffers = 0;
-        alGetSourcei(audio_source, AL_BUFFERS_PROCESSED, &num_processed_buffers);
-        if (num_processed_buffers == 0) {
-            // TODO: Remove this and handle somehow better
-            // std::cout << "We have enough samples in ring buffer, but no processed buffer to upload to\n";
-            return;
+        if (playback_started) {
+            ALint num_processed_buffers = 0;
+            alGetSourcei(audio_source, AL_BUFFERS_PROCESSED, &num_processed_buffers);
+            if (num_processed_buffers == 0) {
+                return false;
+            }
         }
 
         // TODO: Currently we are only ever uploading one buffer worth of data - but maybe we have enough to fill multiple buffers
-        ALuint candidate_buffer = 0;
-        alSourceUnqueueBuffers(audio_source, 1, &candidate_buffer);
+        ALuint candidate_buffer;
+        if (playback_started) {
+            alSourceUnqueueBuffers(audio_source, 1, &candidate_buffer);
+        }
+        else {
+            candidate_buffer = audio_buffers[current_buffer_idx++];
+        }
         std::vector<std::int16_t> buffer_data(AUDIO_SAMPLES_PER_BUFFER, 0);
 
         // Trivial case if the ring buffer has not wrapped around
@@ -269,10 +281,15 @@ namespace sickboy {
             AUDIO_SAMPLE_RATE
         );
         alSourceQueueBuffers(audio_source, 1, &candidate_buffer);
-        // std::cout << "Enqueued buffer\n";
+        if (!playback_started && current_buffer_idx == NUM_BUFFERS) {
+            alSourcePlay(audio_source);
+            playback_started = true;
+        }
 
         // Adjust the start of the ring buffer to the current index
         ring_buffer_start_idx = ring_buffer_current_idx;
+
+        return true;
     }
 
     std::uint16_t APU::get_channel_period([[maybe_unused]] std::uint8_t channel) const {
@@ -280,21 +297,6 @@ namespace sickboy {
         const std::uint8_t period_lower = memory->read(CHANNEL_1_PERIOD_ADDRESS);
         const std::uint8_t period_higher = memory->read(CHANNEL_1_PERIOD_ADDRESS + 1) & 0b00000111;
         return static_cast<std::uint16_t>((period_higher << 8) | period_lower);
-    }
-
-    void APU::initialize_buffers() {
-        std::vector<std::int16_t> empty_buffer(AUDIO_SAMPLES_PER_BUFFER, 0);
-        for (std::size_t i = 0; i < NUM_BUFFERS; ++i) {
-            alBufferData(
-                audio_buffers[i],
-                AL_FORMAT_MONO16,
-                empty_buffer.data(),
-                static_cast<ALsizei>(empty_buffer.size() * sizeof(std::int16_t)),
-                AUDIO_SAMPLE_RATE
-            );
-        }
-        alSourceQueueBuffers(audio_source, NUM_BUFFERS, audio_buffers.data());
-        alSourcePlay(audio_source);
     }
 
 }
